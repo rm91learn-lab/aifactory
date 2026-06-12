@@ -12,6 +12,8 @@ A self-contained, autonomous AI software factory for Claude Code: idea → roadm
 | **Product, plan review & design** — 13 skills | [garrytan/gstack](https://github.com/garrytan/gstack) `a5833c4` (v1.57.10) | `autoplan` multi-persona plan review (CEO/eng/design/DX), design system consultation + visual QA + HTML generation, `cso` security mode, doc generation, `health` dashboard, `office-hours` product interrogation |
 | **DevOps** — 4 custom skills | authored here | `fix-ci`, `deploy`, `release`, `post-deploy-monitor` |
 
+Process docs: [docs/BUILD-PROCESS.md](docs/BUILD-PROCESS.md) (how products get built, stage by stage) · [docs/RULEBOOK.md](docs/RULEBOOK.md) (the 26 operating rules).
+
 Rejected: get-shit-done (archived — gsd-core is its successor), pulumi/agent-skills (Pulumi-locked; reference only), awesome-agent-skills (catalog, snapshot in [docs/reference/skill-catalog.md](docs/reference/skill-catalog.md)).
 
 ## The pipeline
