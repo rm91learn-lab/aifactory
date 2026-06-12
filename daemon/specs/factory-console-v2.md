@@ -73,3 +73,26 @@ The roadmap's requirements are editable from the console; edits re-plan the buil
 ## 3a. Scope edits ripple through the WHOLE product (clarified)
 
 A roadmap edit is a change to the product's source-of-truth scope (`REQUIREMENTS.md`), allowed at ANY time — mid-build or long after launch. It must be absorbed coherently, never as an isolated add/remove. The daemon routes `kind:"scope"` inbox items to a scope-edit agent (see daemon/scope-prompt.md) that: updates REQUIREMENTS.md/ROADMAP.md as source of truth → does impact analysis across data model, APIs, UI/nav, permissions, related features, tests and docs (writes .planning/IMPACT.md) → implements coherently (added features wired into everything they touch; removed features cleanly excised with no orphans) → keeps the full suite green and lets independent QA regression-test the ENTIRE product, not just the change → stages, and the factory promotes only on PASS. Removing shipped features that would strand user data or break live users must be flagged, not done destructively.
+
+## DEFINITIVE VISUAL STANDARD (founder-approved 2026-06-13) — build to this exactly
+
+The console must be state-of-the-art: animated, real-time, premium dark theme, fully responsive (desktop + mobile). Two surfaces, both approved:
+
+### A. The product CARD (grid overview) = the live production-line view
+Each product card looks like the approved "live build" view:
+- Header: product name + sub-line (milestone · build run #) + a green "live · agents working" pill with a pulsing heartbeat.
+- Living PIPELINE RAIL of the 8 stages: done = green check node, active = blue pulsing node with a progress line filling toward it, future = muted. Stage labels beneath.
+- A row of LIVE COUNTERS that count up / animate on change: tests passing, files written, tasks done/total, agents active.
+- AGENTS-AT-WORK chips: one per active agent with its current action and a subtle amber working-pulse.
+- STREAMING LIVE ACTIVITY log: newest-first, timestamped, agent name accented, auto-appends with a gentle fade while building; shows recent history at rest.
+- Footer: "staged preview under QA · promotes on pass", an "open demo" button, and an "ask for a change" button (opens the chat doorway).
+- Motion required, tasteful (pulse, flow, count-up, stream) — no neon/glow. Looks intentional at rest, alive while building.
+
+### B. The DETAIL view (click a card or stage) = zig-zag drill-down roadmap + editable scope + watch-live
+- A zig-zag roadmap: the 8 stages alternate left/right of a central spine that draws in; nodes pop in sequence; reflows to a single column on mobile (container query).
+- THREE levels of disclosure: stage (collapsible) → task (collapsible) → the real artifact/evidence behind that task (requirements text, decisions+reasons, files+demo link, QA results, etc.). Completed tasks show a tick; the in-progress one pulses.
+- EDITABLE SCOPE: requirements are add/removable per phase with a pending-changes count and "Apply to build" (founder-only); applying submits a kind:"scope" inbox edit that re-plans the whole product (see section 3 / daemon/scope-prompt.md).
+- A "watch live" toggle that drops into the immersive production-line animation (surface A, full screen) for demos.
+- Everything animated and real-time off the live snapshot. Mobile and desktop both first-class.
+
+This is the bar for "amazing look and feel." The faithful reference mockups were approved in chat; match that quality.
