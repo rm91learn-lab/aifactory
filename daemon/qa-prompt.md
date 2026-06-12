@@ -13,7 +13,12 @@ PRODUCT: {{PRODUCT}}
    - **Exercise every input format the UI claims to accept with realistic generated samples** — e.g. if it accepts PDFs, create a real PDF with realistic content in a test and push it through the real flow. "The unit test passes" does not count; the user-facing path must work.
    - Try the obvious abuse: empty inputs, wrong file types, double submits, expired links, unauthenticated access to protected routes.
 
-3. **Time-box and prioritize.** Cover the primary journeys and every promised input path thoroughly rather than everything shallowly. Do not refactor, fix, or "improve" anything — you are the tester, not the builder. Report only.
+3. **Specialist reviews — mandatory, with evidence in the report:**
+   - **Code review:** invoke the `review-code` skill via the Skill tool (full review). If the skill cannot run, perform an equivalent manual review (bugs, security, consistency, test coverage) and say explicitly that you did it manually.
+   - **Security:** invoke the `cso` skill (OWASP/STRIDE review) the same way; at minimum verify auth boundaries, session handling, injection surfaces, and secrets hygiene on the live deployment.
+   - QA-REPORT.md must contain a "Code Review" section and a "Security" section with the actual findings (or an explicit "none found" with what was checked). A report missing these sections is an invalid QA round.
+
+4. **Time-box and prioritize.** Cover the primary journeys and every promised input path thoroughly rather than everything shallowly. Do not refactor, fix, or "improve" anything — you are the tester, not the builder. Report only.
 
 4. **Write two files and commit them:**
    - `QA-REPORT.md` — every finding with severity (critical / major / minor), exact reproduction steps, and evidence (commands, status codes, screenshots paths if any).
