@@ -43,8 +43,9 @@ export async function monitorPass(root = ROOT, cfg = {}) {
 
   for (const name of names) {
     const deploy = readJson(path.join(root, 'products', name, 'DEPLOY.json'));
-    if (!deploy?.url) continue;
-    const url = new URL(deploy.healthPath || '/', deploy.url).href;
+    const base = deploy?.url || deploy?.live_url;
+    if (!base) continue;
+    const url = deploy.health_url || new URL(deploy.healthPath || '/', base).href;
     const result = await check(url, timeoutMs);
     const before = prev[name] || { fails: 0, alerted: false };
     const fails = result.up ? 0 : (before.fails || 0) + 1;

@@ -18,7 +18,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { buildDashboard, statusText } from '../scripts/build-dashboard.mjs';
 import { monitorPass, healthText } from '../scripts/monitor.mjs';
-import { makeLineParser } from '../scripts/agent-stream.mjs';
+import { makeLineParser, applyTaskOps } from '../scripts/agent-stream.mjs';
 
 const execFileP = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -85,7 +85,7 @@ function spawnAgent(dest, prompt, logName) {
     { cwd: dest, stdio: ['ignore', 'pipe', 'pipe'] });
 
   const actFile = path.join(dest, '.factory-activity.json');
-  let act = { updatedAt: null, counts: { actions: 0, writes: 0, commands: 0 }, entries: [] };
+  let act = { updatedAt: null, counts: { actions: 0, writes: 0, commands: 0 }, entries: [], tasks: [] };
   try { act = { ...act, ...JSON.parse(fs.readFileSync(actFile, 'utf8')) }; } catch {}
   let dirty = false;
   const parser = makeLineParser((entry) => {
@@ -95,6 +95,9 @@ function spawnAgent(dest, prompt, logName) {
     act.entries.push(entry);
     if (act.entries.length > 40) act.entries = act.entries.slice(-40);
     act.updatedAt = entry.t;
+    dirty = true;
+  }, (ops) => {
+    act.tasks = applyTaskOps(act.tasks || [], ops);
     dirty = true;
   });
   const flush = setInterval(() => {

@@ -123,21 +123,25 @@ export function collectProducts(root = ROOT) {
     const hasPlanning = fs.existsSync(planning);
     const h = healthAll[name];
     const a = readJson(path.join(dir, '.factory-activity.json'));
+    const tasks = (a?.tasks || []).slice(0, 60);
+    const tasksDone = tasks.filter(t => t.status === 'completed').length;
+    const pctFinal = board.length ? pct : tasks.length ? Math.round((tasksDone / tasks.length) * 100) : pct;
     return {
       name,
       idea: read(path.join(dir, 'IDEA.md')).replace(/^#.*\n/, '').trim().slice(0, 600),
       building: active.includes(name),
-      pct,
+      pct: pctFinal,
       board,
+      tasks,
       phases: board.map(p => ({ name: p.name, done: p.status === 'done' })),
       checkboxes: boxes,
       stateLine: parseStateLine(read(path.join(planning, 'STATE.md'))),
       version: parseVersion(dir),
       repoUrl: git(dir, 'remote', 'get-url', 'origin').replace(/\.git$/, ''),
-      deployUrl: readJson(path.join(dir, 'DEPLOY.json'))?.url || '',
+      deployUrl: (() => { const d = readJson(path.join(dir, 'DEPLOY.json')); return d?.url || d?.live_url || ''; })(),
       lastCommit: git(dir, 'log', '-1', '--format=%cr · %s').slice(0, 100),
       commits: Number(git(dir, 'rev-list', '--count', 'HEAD')) || 0,
-      stage: !hasPlanning ? 'scaffolded' : pct >= 100 ? 'ready' : board.length ? 'in progress' : 'planning',
+      stage: !hasPlanning && !tasks.length ? 'scaffolded' : pctFinal >= 100 ? 'ready' : (board.length || tasks.length) ? 'in progress' : 'planning',
       health: h ? { up: h.up, ms: h.ms, url: h.url, downSince: h.downSince } : null,
       activity: a ? { updatedAt: a.updatedAt, counts: a.counts, entries: (a.entries || []).slice(-15) } : null,
       requirements: read(path.join(planning, 'REQUIREMENTS.md')).trim().slice(0, 6000),
@@ -328,10 +332,22 @@ function renderProduct(view, p) {
   }
   view.appendChild(links);
 
+  // Phase board when formal planning exists; otherwise the agent's own live
+  // task list — the board is never empty while work is happening.
+  var useTasks = !p.board.length && p.tasks && p.tasks.length;
+  var cols = useTasks
+    ? [['pending', '📋 To do'], ['in_progress', '🛠 In progress'], ['completed', '✅ Done']]
+    : COLS;
+  var items_of = function (key) {
+    return useTasks
+      ? p.tasks.filter(function (t) { return (t.status || 'pending') === key; }).map(function (t) { return { name: t.s, status: key, tasks: [] }; })
+      : p.board.filter(function (ph) { return ph.status === key; });
+  };
   var board = el('div', 'board');
-  COLS.forEach(function (col) {
+  if (useTasks) board.style.gridTemplateColumns = 'repeat(3,1fr)';
+  cols.forEach(function (col) {
     var c = el('div', 'col');
-    var items = p.board.filter(function (ph) { return ph.status === col[0]; });
+    var items = items_of(col[0]);
     var h3 = el('h3', null, col[1] + ' ');
     h3.appendChild(el('span', 'n', String(items.length)));
     c.appendChild(h3);
@@ -350,7 +366,7 @@ function renderProduct(view, p) {
     board.appendChild(c);
   });
   view.appendChild(board);
-  if (!p.board.length) {
+  if (!p.board.length && !useTasks) {
     view.appendChild(el('div', 'meta', p.building
       ? 'The team is drawing up the roadmap right now — stages will appear here within minutes.'
       : 'No roadmap yet.'));
