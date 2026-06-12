@@ -55,3 +55,17 @@ A chat panel on the product page so the founder can request a change or report a
 - `POST /inbox` rejects without viewer auth; accepts with it; the item appears in `GET /inbox` (bearer) and is removed by `/inbox/ack`.
 - The chat panel's confirm step is mandatory — no request is POSTed without it.
 - Nothing crashes on a snapshot with missing fields / a product with no activity.
+
+## 3. Editable scope (roadmap as control surface) — founder-confirmed addition
+
+The roadmap's requirements are editable from the console; edits re-plan the build.
+
+- In the Plan-stage drill-down, each requirement is editable: remove (x) or add a new feature per phase. Show a pending-changes count and an "Apply to build" action. Founder-only (behind viewer auth).
+- Apply submits a SCOPE edit via the inbox (`POST /inbox` with `kind:"scope"`, body carrying the added/removed items per phase). The Apply click is the founder confirmation.
+- Daemon side (extend the inbox poller): a `kind:"scope"` item dispatches a scope-edit job that (a) rewrites `.planning/REQUIREMENTS.md` and `.planning/ROADMAP.md` to reflect the edits, (b) re-plans remaining work, (c) builds ADDED items as new tasks and drops REMOVED-not-yet-built items from upcoming stages. Roadmap counts/% recompute from the updated files.
+- Guardrails: added features still go through the full build → independent QA → staged → promote pipeline (no editing around QA). Removing a not-yet-built feature just drops it; removing an already-shipped feature stops future work and hides it from scope but does NOT rip out shipped code — that requires a separate explicit "remove the X feature" request. Edits are founder-only.
+
+## Drill-down + dual view (refinement to section 1)
+
+- Each task in the roadmap is itself expandable to show the real artifact behind it: requirements → REQUIREMENTS.md content; decisions → ASSUMPTIONS.md; build tasks → files + a demo link; QA → QA-REPORT.md; release → DEPLOY.json/canary; evolve → ROADMAP change history. Three levels: stage → task → evidence.
+- Offer both views from one screen: the zig-zag drill-down roadmap as the default ("where are we + proof"), and a "watch live" button into the immersive production-line animation ("watch it work"). Both responsive (container-query reflow to a single column on mobile).
