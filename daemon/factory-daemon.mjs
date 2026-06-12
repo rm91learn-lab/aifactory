@@ -78,6 +78,14 @@ function readSummary(dest, file) {
   try { return fs.readFileSync(path.join(dest, file), 'utf8').trim().slice(0, 1500); } catch { return ''; }
 }
 
+// Did a failed run die from provider-side capacity issues rather than its own work?
+function isTransientFailure(logBase) {
+  try {
+    const tail = fs.readFileSync(path.join(LOG_DIR, `${logBase}.log`), 'utf8').slice(-12000);
+    return /overloaded|rate.?limit|status.?529|temporarily unavailable/i.test(tail);
+  } catch { return false; }
+}
+
 // Spawn a headless agent whose every action streams into the product's
 // .factory-activity.json — the dashboard's live activity feed.
 function spawnAgent(dest, prompt, logName) {
@@ -342,7 +350,7 @@ function pump() {
   }
 }
 
-async function startUpdate({ product, idea, chatId, qaRound = 0 }) {
+async function startUpdate({ product, idea, chatId, qaRound = 0, retried = 0 }) {
   const dest = path.join(ROOT, 'products', product);
   if (!fs.existsSync(dest)) throw new Error(`product "${product}" is not on this machine`);
   const prompt = UPDATE_TEMPLATE.replace('{{PRODUCT}}', product).replace('{{REQUEST}}', idea);
@@ -362,6 +370,13 @@ async function startUpdate({ product, idea, chatId, qaRound = 0 }) {
       startQA(product, dest, chatId, qaRound, 'UPDATE-SUMMARY.txt', '');
       return;
     }
+    if (code !== 0 && !retried && isTransientFailure(`${product}-update`)) {
+      await send(chatId, `⚠️ The AI service hit a temporary capacity limit while working on "${product}" — retrying automatically.`);
+      state.queue.push({ type: 'update', product, idea, chatId, qaRound, retried: 1 });
+      saveState();
+      pump();
+      return;
+    }
     const summary = readSummary(dest, 'UPDATE-SUMMARY.txt');
     await send(chatId, code === 0
       ? `✅ Done with "${product}".\n\n${summary || 'The change is in, but no summary was written — ask me to check if unsure.'}`
@@ -370,7 +385,7 @@ async function startUpdate({ product, idea, chatId, qaRound = 0 }) {
   });
 }
 
-async function startBuild({ idea, chatId, name }) {
+async function startBuild({ idea, chatId, name, retried = 0 }) {
   const slug = name && fs.existsSync(path.join(ROOT, 'products', name)) ? slugify(name) : (name || slugify(suggestName(idea)));
   const dest = path.join(ROOT, 'products', slug);
   await send(chatId, `🏭 Building "${slug}"\n1/3 scaffolding workspace…`);
@@ -411,6 +426,13 @@ async function startBuild({ idea, chatId, name }) {
     if (code === 0 && QA_ENABLED) {
       await send(chatId, `🛠 "${slug}" build finished — handing it to independent QA before I call it done.`);
       startQA(slug, dest, chatId, 0, 'BUILD-SUMMARY.txt', repoUrl);
+      return;
+    }
+    if (code !== 0 && !retried && isTransientFailure(slug)) {
+      await send(chatId, `⚠️ The AI service hit a temporary capacity limit while building "${slug}" — not a problem with your product. Retrying automatically.`);
+      state.queue.push({ type: 'update', product: slug, chatId, retried: 1, idea: 'The previous build attempt was interrupted partway by a temporary AI service outage. Build the complete product from IDEA.md following the CLAUDE.md initial-build directive. Reuse and verify anything already done; finish everything.' });
+      saveState();
+      pump();
       return;
     }
     const summary = readSummary(dest, 'BUILD-SUMMARY.txt');
