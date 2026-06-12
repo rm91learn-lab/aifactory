@@ -111,13 +111,22 @@ function slugify(idea) {
 
 async function handleMessage(msg) {
   const chatId = msg.chat?.id;
-  const text = (msg.text || '').trim();
-  if (!chatId || !text) return;
+  if (!chatId) return;
 
   if (!CONFIG.allowedChatIds.includes(chatId)) {
     if (!warnedChats.has(chatId)) {
       warnedChats.add(chatId);
       await send(chatId, `This factory doesn't know you yet.\nYour chat id: ${chatId}\nAdd it to daemon/config.json → allowedChatIds and restart the daemon.`);
+    }
+    return;
+  }
+
+  const text = (msg.text || '').trim();
+  if (!text) {
+    if (msg.voice || msg.audio || msg.video_note) {
+      await send(chatId, "I can't listen to voice notes yet — please type it as a regular message.");
+    } else if (msg.photo || msg.document || msg.video || msg.sticker) {
+      await send(chatId, 'I can only read text for now — please describe it in a message.');
     }
     return;
   }
@@ -129,7 +138,19 @@ async function handleMessage(msg) {
   } else if (text === '/health') {
     await send(chatId, healthText(ROOT));
   } else if (text === '/help') {
-    await send(chatId, 'Just text me in plain words — I handle the rest.\n\n• New product idea → I build it and send you the link.\n• Problem or change ("the payment button is broken", "make the homepage blue") → I\'ll ask which product, then fix it.\n\n/status — how every product is going\n/health — are the live products up\n/start — show chat id');
+    await send(chatId, 'Just text me in plain words — I always ask before starting anything.\n\n• New product idea → I build it and send you the link.\n• Problem or change ("the payment button is broken") → tap which product, I fix it.\n• Voice notes aren\'t supported yet — please type.\n\n/status — how every product is going\n/health — are the live products up\n/cancel — stop everything queued or running\n/start — show chat id');
+  } else if (text === '/cancel') {
+    const queued = state.queue.length;
+    state.queue = [];
+    saveState();
+    pendingIdeas.delete(chatId);
+    const killed = [];
+    for (const [key, entry] of running) {
+      try { entry.child.kill('SIGTERM'); killed.push(key); } catch {}
+    }
+    await send(chatId, queued || killed.length
+      ? `Stopped. Cancelled ${queued} waiting and stopped ${killed.length} running (${killed.join(', ') || 'none'}). Anything already created stays until you tell me to remove it.`
+      : 'Nothing was running or waiting.');
   } else if (text.startsWith('/')) {
     await send(chatId, `Unknown command ${text.split(' ')[0]}. /help for commands.`);
   } else {
@@ -142,7 +163,9 @@ async function routeIdea(chatId, text) {
   const pending = pendingIdeas.get(chatId);
   if (pending) {
     pendingIdeas.delete(chatId);
-    if (/new product/i.test(text) || text.startsWith('🆕')) {
+    if (/ignore/i.test(text) || text.startsWith('❌')) {
+      await send(chatId, 'Okay, ignored. Nothing was started.');
+    } else if (/new product/i.test(text) || text.startsWith('🆕')) {
       await enqueue({ type: 'build', idea: pending, chatId });
     } else {
       const pick = text.trim().toLowerCase();
@@ -150,20 +173,24 @@ async function routeIdea(chatId, text) {
       if (target) await enqueue({ type: 'update', product: target, idea: pending, chatId });
       else await send(chatId, `I don't recognize "${text.trim()}", so nothing was started. Send the request again to retry.`);
     }
-  } else if (products.length === 0) {
-    await enqueue({ type: 'build', idea: text, chatId });
-  } else {
-    pendingIdeas.set(chatId, text);
-    await tg('sendMessage', {
-      chat_id: chatId,
-      text: 'Got it. Is this a NEW product, or a change/fix to an existing one? Tap one:',
-      reply_markup: {
-        keyboard: [[{ text: '🆕 New product' }], ...products.map(p => [{ text: p }])],
-        one_time_keyboard: true,
-        resize_keyboard: true,
-      },
-    });
+    return;
   }
+  // Never create anything from a bare message — always confirm first.
+  pendingIdeas.set(chatId, text);
+  const preview = text.length > 90 ? text.slice(0, 90) + '…' : text;
+  await tg('sendMessage', {
+    chat_id: chatId,
+    text: `Before I start anything — what should I do with this?\n\n"${preview}"`,
+    reply_markup: {
+      keyboard: [
+        [{ text: '🆕 Build this as a new product' }],
+        ...products.map(p => [{ text: p }]),
+        [{ text: '❌ Ignore that message' }],
+      ],
+      one_time_keyboard: true,
+      resize_keyboard: true,
+    },
+  });
 }
 
 async function enqueue(job) {
