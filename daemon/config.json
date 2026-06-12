@@ -11,6 +11,7 @@
   "extraClaudeArgs": [],
   "pushDashboard": false,
   "dashboardPort": 7717,
+  "cloudDashboard": { "enabled": false, "url": "" },
   "monitor": {
     "intervalSeconds": 300,
     "failThreshold": 3,

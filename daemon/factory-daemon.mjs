@@ -345,9 +345,30 @@ async function checkProgress(slug, dest, entry) {
   }
 }
 
+let lastCloudPush = 0;
+function pushDashboardOnline() {
+  const cloud = CONFIG.cloudDashboard;
+  const token = process.env.DASHBOARD_PUSH_TOKEN;
+  if (!cloud?.enabled || !cloud.url || !token) return;
+  if (Date.now() - lastCloudPush < 10_000) return;
+  lastCloudPush = Date.now();
+  try {
+    const html = fs.readFileSync(path.join(ROOT, 'dashboard', 'index.html'), 'utf8');
+    const data = fs.readFileSync(path.join(ROOT, 'dashboard', 'data.json'), 'utf8');
+    fetch(`${cloud.url.replace(/\/$/, '')}/update`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ html, data }),
+    }).catch(err => log('cloud dashboard push failed:', err.message));
+  } catch (err) {
+    log('cloud dashboard push failed:', err.message);
+  }
+}
+
 let pushingDashboard = false;
 function refreshDashboard() {
   const products = buildDashboard(ROOT);
+  pushDashboardOnline();
   if (CONFIG.pushDashboard && !pushingDashboard) {
     pushingDashboard = true;
     (async () => {

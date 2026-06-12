@@ -1,0 +1,7 @@
+name = "aifactory-dashboard"
+main = "dashboard-worker.js"
+compatibility_date = "2026-06-01"
+
+[[kv_namespaces]]
+binding = "DASH"
+id = "fc9d8e48b10247a1858e084de8307468"
