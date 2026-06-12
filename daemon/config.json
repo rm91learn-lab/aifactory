@@ -1,5 +1,7 @@
 {
-  "allowedChatIds": [],
+  "allowedChatIds": [
+    8821313204
+  ],
   "githubOwner": "rm91learn-lab",
   "repoVisibility": "private",
   "permissionMode": "bypassPermissions",
