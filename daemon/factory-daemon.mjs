@@ -762,6 +762,35 @@ setInterval(runMonitor, MON.intervalSeconds * 1000);
 // the live activity feed actually ticks for remote viewers.
 setInterval(() => { if (running.size) refreshDashboard(); }, 20_000);
 
+// Second doorway: pull change/bug requests the founder submitted from the
+// console's in-page chat. The console stores them in its KV inbox (already
+// founder-confirmed in the web UI); we run each through the SAME update → QA →
+// staged pipeline as a Telegram request. No-op until the console ships /inbox.
+async function pollConsoleInbox() {
+  const cloud = CONFIG.cloudDashboard;
+  const token = process.env.DASHBOARD_PUSH_TOKEN;
+  if (!cloud?.enabled || !cloud.url || !token) return;
+  const base = cloud.url.replace(/\/$/, '');
+  try {
+    const res = await fetch(`${base}/inbox`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return; // 404 until the console implements the inbox endpoint
+    const items = (await res.json()).items || [];
+    if (!items.length) return;
+    const ackIds = [];
+    for (const it of items) {
+      ackIds.push(it.id);
+      if (!it.product || !it.text || !fs.existsSync(path.join(ROOT, 'products', it.product))) continue;
+      const label = it.kind === 'bug' ? 'Bug reported from the console' : 'Change requested from the console';
+      state.queue.push({ type: 'update', product: it.product, chatId: CONFIG.allowedChatIds[0], idea: `${label}: ${it.text}` });
+      for (const c of CONFIG.allowedChatIds) await send(c, `📥 Console request for "${it.product}": ${it.text}\nQueued — same fix → QA → staged-deploy pipeline as a chat request.`);
+    }
+    saveState();
+    await fetch(`${base}/inbox/ack`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ ids: ackIds }) }).catch(() => {});
+    pump();
+  } catch { /* offline or endpoint absent — retry next tick */ }
+}
+setInterval(pollConsoleInbox, 20_000);
+
 let backoff = 1;
 while (true) {
   const res = await tg('getUpdates', { offset: state.lastUpdateId + 1, timeout: 50, allowed_updates: ['message'] });
