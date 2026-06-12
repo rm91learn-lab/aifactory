@@ -306,6 +306,7 @@ async function startUpdate({ product, idea, chatId }) {
   running.set(product, { child, chatId });
   saveState();
   refreshDashboard();
+  await send(chatId, `🔧 Working on "${product}" now — I'll report here when it's done. Watch live: ${dashboardLink()}`);
   child.on('exit', async (code) => {
     running.delete(product);
     saveState();
