@@ -10,9 +10,9 @@ Work in this order:
 
 2. **Stabilize first.** If the failure correlates with the most recent deploy and the platform supports instant rollback, roll back NOW and verify the URL recovers. A degraded product stays down not one minute longer than necessary.
 
-3. **Fix forward — always.** Stabilizing is not done. Reproduce the problem with a failing test (`test-driven-development`), implement the real fix at the root cause (`systematic-debugging` — no patches over symptoms), run the full test suite, and apply `verification-before-completion` before claiming anything works.
+3. **Do NOT fix forward to production.** IRON RULE: nothing reaches production without passing independent QA. Your job is to restore the last known-good (already QA-approved) version and diagnose — the root-cause fix will run through the normal pipeline (build → independent QA → staged promotion) as a separate job immediately after you finish. You may write a failing test that reproduces the bug (it helps the fix job), but never deploy new code.
 
-4. **Ship and redeploy.** Commit with a message naming the root cause, push, deploy per DEPLOY.json's platform, verify the health URL is green, then watch it for several minutes (`post-deploy-monitor` approach) before declaring recovery.
+4. **Verdict file.** Write `INCIDENT-VERDICT.txt` at the repo root, first line exactly `NEEDS-FIX` (a code fix is required — the factory will queue it) or `NO-FIX` (external/transient cause; nothing to change), then one plain sentence.
 
 5. **Report for the founder.** Write two things and commit them:
    - `INCIDENT-<UTC timestamp>.md` — full technical detail: symptoms, evidence, root cause, fix, verification.

@@ -1,17 +1,17 @@
 {
-  "checkedAt": "2026-06-12T19:16:47.990Z",
+  "checkedAt": "2026-06-12T19:26:47.895Z",
   "products": {
     "hrms-app": {
       "url": "https://hrms-app.rm91-learn.workers.dev/api/health",
       "platform": "cloudflare",
       "up": true,
       "httpStatus": 200,
-      "ms": 573,
+      "ms": 473,
       "fails": 0,
       "alerted": false,
       "downSince": null,
       "lastIncidentAt": null,
-      "checkedAt": "2026-06-12T19:16:47.990Z"
+      "checkedAt": "2026-06-12T19:26:47.894Z"
     }
   }
 }

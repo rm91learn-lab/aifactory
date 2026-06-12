@@ -9,7 +9,7 @@ PRODUCT: {{PRODUCT}}
 2. **Test the real thing, the way a real user would.**
    - You have a specialist QA toolkit installed — use it instead of improvising: `qa-test-planner` (what to test, edge-case discovery), `playwright-e2e-testing` and `webapp-playwright-testing` (how to write solid browser tests: locators, auto-waiting, flakiness), `a11y-playwright-testing` (accessibility), `api-testing` / `api-contract-validator` / `api-test-suite-generator` (API correctness and contracts), `state-machine-test-generator` (stateful flows).
    - Run the product's own test suite first (it must pass — if it doesn't, that's an automatic FAIL).
-   - Test the LIVE deployment from DEPLOY.json, not just local code.
+   - **Test the STAGED version when it exists**: if `DEPLOY-STAGED.json` is present, its `previewUrl` is the candidate awaiting promotion — ALL your live testing happens against that preview. Production is only touched by the factory after your PASS. If only `DEPLOY.json` exists (first-ever deployment, no users yet), test that URL.
    - For web UIs: install Playwright in the workspace (`npm i -D playwright && npx playwright install chromium`) and drive the actual browser through the top user journeys end to end, following the playwright skills' locator and waiting practices.
    - **Run an automated accessibility scan** (axe-core per `a11y-playwright-testing`) on the main screens; include findings in the report under "Accessibility".
    - **Exercise every input format the UI claims to accept with realistic generated samples** — e.g. if it accepts PDFs, create a real PDF with realistic content in a test and push it through the real flow. "The unit test passes" does not count; the user-facing path must work.

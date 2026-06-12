@@ -27,6 +27,10 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 - **Turbo skills** own the ship tail and QA. They write working files under `.turbo/` (gitignored).
 - **gstack skills** (13: plan reviews, design, security, docs, health, office-hours) add the product/design/review dimension. Their preambles call `~/.claude/skills/gstack/bin/*` helper scripts with `|| true` fallbacks — full features when a global gstack install exists, silent defaults otherwise. `design-review` uses the gstack browse daemon when available; falls back to static analysis.
 
+## The iron rule
+
+**Nothing reaches production without passing independent QA. Period.** Builder and update agents deploy to staging only (`DEPLOY-STAGED.json` records the preview URL and promote command); the daemon promotes to production exclusively after a QA PASS, then a 10-minute canary watches the live site and rolls back deterministically on failure. Incident agents stabilize by rolling back to the last QA-approved version — never by deploying new code. Toolkit self-upgrades are verified by `scripts/verify-kit.mjs` and auto-reverted if damaged. The only exception: a product's first-ever deployment (no users exist yet), which QA still gates before it is announced.
+
 ## Known seams (intentional substitutions)
 
 - Turbo's planning skills (`turboplan`, `draft-plan`, `draft-spec`, shells) were deliberately NOT imported — GSD owns planning. Where a turbo skill offers a "plan path" (e.g. `resolve-findings`), route it to `/gsd:plan-phase` instead of `/turboplan`.

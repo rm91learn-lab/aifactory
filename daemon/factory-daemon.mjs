@@ -501,6 +501,76 @@ function refreshDashboard() {
 
 const gitIn = (cwd, ...args) => execFileP('git', ['-C', cwd, ...args]);
 
+// --- production protection: staged promotion, canary, deterministic rollback --
+async function quickCheck(dest) {
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(dest, 'DEPLOY.json'), 'utf8'));
+    const base = d.url || d.live_url;
+    if (!base) return null;
+    const url = d.health_url || new URL(d.healthPath || '/', base).href;
+    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(10000) });
+    return { ok: res.status >= 200 && res.status < 400, status: res.status, url };
+  } catch (err) {
+    return { ok: false, status: 0, url: '', err: err.message };
+  }
+}
+
+// QA passed -> the factory (not the agent) sends the staged version to production.
+async function promoteStaged(name, dest) {
+  const stagedFile = path.join(dest, 'DEPLOY-STAGED.json');
+  if (!fs.existsSync(stagedFile)) return { promoted: false, reason: 'nothing staged' };
+  const staged = JSON.parse(fs.readFileSync(stagedFile, 'utf8'));
+  if (!staged.promoteCommand) return { promoted: false, reason: 'no promote command recorded' };
+  log(`promoting ${name} to production`);
+  await execFileP('bash', ['-lc', staged.promoteCommand], { cwd: dest, timeout: 300000 });
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => setTimeout(r, 15000));
+    const c = await quickCheck(dest);
+    if (c?.ok) {
+      fs.renameSync(stagedFile, path.join(dest, '.last-promotion.json'));
+      try { await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', 'factory: promote QA-approved version to production'); await gitIn(dest, 'push', 'origin', 'HEAD'); } catch {}
+      return { promoted: true };
+    }
+  }
+  return { promoted: false, reason: 'production health did not confirm after promotion' };
+}
+
+// 10-minute canary after anything reaches production; two strikes -> roll back.
+function startCanary(name, dest, chatId) {
+  if (!fs.existsSync(path.join(dest, 'DEPLOY.json'))) return;
+  let fails = 0, ticks = 0;
+  log(`canary watching ${name}`);
+  const timer = setInterval(async () => {
+    ticks++;
+    const c = await quickCheck(dest);
+    if (!c) { clearInterval(timer); return; }
+    fails = c.ok ? 0 : fails + 1;
+    if (fails >= 2) { clearInterval(timer); await rollbackProduct(name, dest, chatId, c); return; }
+    if (ticks >= 20) { clearInterval(timer); log(`canary clean: ${name}`); }
+  }, 30000);
+}
+
+async function rollbackProduct(name, dest, chatId, evidence) {
+  log(`CANARY FAILED for ${name} — rolling back production`);
+  let recovered = false;
+  try {
+    await execFileP('bash', ['-lc', "printf 'y\\n' | npx -y wrangler rollback 2>&1 | tail -3"], { cwd: dest, timeout: 180000 });
+    for (let i = 0; i < 3 && !recovered; i++) {
+      await new Promise(r => setTimeout(r, 20000));
+      const c = await quickCheck(dest);
+      if (c?.ok) recovered = true;
+    }
+  } catch (err) { log('deterministic rollback failed:', err.message); }
+  if (recovered) {
+    await send(chatId, `⚡ A fresh update to "${name}" started failing live checks minutes after going out — I rolled production back to the previous working version immediately. Customers are unaffected. A corrected version is being prepared and will be fully re-tested before it goes anywhere near production.`);
+    state.queue.push({ type: 'update', product: name, chatId, idea: `The promoted version was automatically ROLLED BACK after failing live canary checks (${evidence?.status ?? 'no response'} at ${evidence?.url || 'health URL'}). Production now runs the previous version. Reproduce why the new version failed in real production conditions (bindings, migrations, cold starts), fix at root cause with tests proving it, and stage the corrected version for QA. Do not rush.` });
+    saveState();
+    pump();
+  } else {
+    maybeSpawnIncident(name, { url: evidence?.url || '', error: 'post-promotion canary failure; deterministic rollback unconfirmed', httpStatus: evidence?.status || 0, fails: 2, lastIncidentAt: null });
+  }
+}
+
 // Independent QA gate: a separate agent (fresh context, tester persona) tries to
 // break what the builder just shipped. FAIL triggers ONE bounded fix-and-retest
 // round, then we report honestly instead of looping.
@@ -521,7 +591,16 @@ function startQA(name, dest, chatId, qaRound, summaryFile, repoUrl) {
     const verdict = verdictRaw.replace(/^(PASS|FAIL)\s*/i, '').trim();
     const summary = readSummary(dest, summaryFile);
     if (pass) {
-      await send(chatId, `🧪✅ Independent QA passed "${name}".\n${verdict}\n\n${summary || ''}${repoUrl ? `\n${repoUrl}` : ''}`.trim());
+      let promoteNote = '';
+      try {
+        const result = await promoteStaged(name, dest);
+        if (result.promoted) promoteNote = '\nThe QA-approved version is now live in production.';
+        else if (result.reason !== 'nothing staged') promoteNote = `\n⚠️ Promotion to production did not complete (${result.reason}) — production still runs the previous version. I'll need another pass at this.`;
+      } catch (err) {
+        promoteNote = `\n⚠️ Promotion to production failed (${err.message.slice(0, 120)}) — production still runs the previous version.`;
+      }
+      await send(chatId, `🧪✅ Independent QA passed "${name}".\n${verdict}\n\n${summary || ''}${promoteNote}${repoUrl ? `\n${repoUrl}` : ''}`.trim());
+      startCanary(name, dest, chatId);
     } else if (!verdictRaw) {
       await send(chatId, `🧪⚠️ QA finished for "${name}" but wrote no verdict — treat it as untested. QA log: daemon/logs/${name}-qa.log\n\n${summary || ''}`.trim());
     } else if (qaRound >= 1) {
@@ -583,8 +662,14 @@ function maybeSpawnIncident(name, entry) {
     const summary = readSummary(dest, 'INCIDENT-SUMMARY.txt');
     for (const chatId of CONFIG.allowedChatIds) {
       await send(chatId, code === 0
-        ? `🚑 ${name}: handled.\n\n${summary || 'Fixed, but no summary was written — /health to confirm it is up.'}`
-        : `🚑 ${name}: I couldn't finish fixing this on my own.\n${summary || `Details: daemon/logs/${name}-incident.log`}`);
+        ? `🚑 ${name}: stabilized.\n\n${summary || 'Handled, but no summary was written — /health to confirm it is up.'}`
+        : `🚑 ${name}: I couldn't stabilize this on my own.\n${summary || `Details: daemon/logs/${name}-incident.log`}`);
+    }
+    // Root-cause fixes go through the full pipeline (build -> QA -> staged promotion).
+    if (/^NEEDS-FIX/i.test(readSummary(dest, 'INCIDENT-VERDICT.txt'))) {
+      state.queue.push({ type: 'update', product: name, chatId: CONFIG.allowedChatIds[0], idea: 'An incident just occurred on this product (see the latest INCIDENT-*.md). Production was stabilized on the previous version. Fix the root cause with tests proving it, and stage the corrected version for QA — never deploy to production directly.' });
+      saveState();
+      pump();
     }
   });
 }
@@ -600,12 +685,25 @@ async function runUpstreamCheck() {
     if (!updates.length) return;
     upgradeRunning = true;
     log('upstream updates detected:', updates.map(u => `${u.name}+${u.ahead}`).join(' '));
+    const preSha = (await gitIn(ROOT, 'rev-parse', 'HEAD')).stdout.trim();
     const child = spawnAgent(ROOT, UPGRADE_TEMPLATE, 'factory-upgrade');
     child.on('exit', async (code) => {
       upgradeRunning = false;
       const s = readSummary(ROOT, 'UPGRADE-SUMMARY.txt');
       try { fs.unlinkSync(path.join(ROOT, 'UPGRADE-SUMMARY.txt')); } catch {}
       try { fs.unlinkSync(path.join(ROOT, '.factory-activity.json')); } catch {}
+      // Verify the kit after ANY upgrade attempt; a damaged kit rolls back instantly.
+      let kitOk = true;
+      try { await execFileP('node', [path.join(ROOT, 'scripts', 'verify-kit.mjs')]); } catch { kitOk = false; }
+      if (!kitOk) {
+        log('KIT VERIFICATION FAILED after upgrade — rolling back to', preSha.slice(0, 7));
+        try {
+          await gitIn(ROOT, 'reset', '--hard', preSha);
+          await gitIn(ROOT, 'push', '--force-with-lease', 'origin', 'main');
+        } catch (err) { log('kit rollback push issue:', err.message); }
+        for (const c of CONFIG.allowedChatIds) await send(c, '🛡 A toolkit upgrade failed verification and was rolled back automatically — the factory is unchanged and healthy. It will be re-attempted carefully on the next cycle.');
+        return;
+      }
       if (code !== 0) {
         for (const c of CONFIG.allowedChatIds) await send(c, '⚠️ The factory tried to update its own toolkit and hit a problem — it will retry tomorrow. (Log: daemon/logs/factory-upgrade.log)');
       } else if (/^MATERIAL/i.test(s)) {
