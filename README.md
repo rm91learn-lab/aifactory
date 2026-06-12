@@ -69,6 +69,12 @@ Then any plain message to the bot is treated as a product idea: workspace → re
 
 `node scripts/build-dashboard.mjs` scans every product's `.planning/` state and writes [dashboard/index.html](dashboard/index.html) — per-product progress bars, phase checklists, current activity, version, and repo links (plus `dashboard/data.json` for tooling). Open it locally (`open dashboard/index.html`), or set `pushDashboard: true` in daemon/config.json to auto-commit it and serve via GitHub Pages (repo Settings → Pages → main branch). The daemon regenerates it on every phase change; it self-refreshes every 60 s.
 
+## Customer handoff & re-engagement
+
+Each product lives in its own repo precisely so it can be sold as a unit. When payment clears, run the `handoff-product` skill in the product workspace: full-history secrets scan → factory kit stripped from HEAD (`.claude/`, CLAUDE.md — the `.planning/` audit trail stays, it's part of the deliverable) → local mirror archived under `archives/` (you lose the repo on transfer) → `v1.0-handoff` tag → GitHub repo transfer to the customer, who must accept it. Handoffs are logged in `docs/HANDOFFS.md`.
+
+If the customer later wants more work done on the repo they now own: they add you as a collaborator, then `scripts/adopt-product.sh <their-git-url>` clones it into `products/` and overlays the factory kit **locally only** — registered in `.git/info/exclude`, so the tooling can never be committed to their repo. Run `/gsd:import` to map the codebase and rebuild planning state, work on branches, deliver via PRs. The product reappears on the dashboard automatically.
+
 ## Requirements
 
 - **Required:** Claude Code, `git`, [GitHub CLI](https://cli.github.com) (`gh`) — PR and CI skills depend on it

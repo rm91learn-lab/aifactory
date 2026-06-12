@@ -19,6 +19,8 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 | Docs | gstack | `document-generate`, `document-release` (post-ship) |
 | CI / deploy / release | custom skills | `fix-ci`, `deploy`, `release` |
 | Operate | custom + turbo | `post-deploy-monitor`, `investigate`, `self-improve` |
+| Handoff (after payment) | custom | `handoff-product` — secrets scan, strip kit, archive mirror, transfer repo to customer |
+| Re-engage (customer-owned repo) | custom | `scripts/adopt-product.sh <git-url>` → `/gsd:import` → deliver via PRs |
 
 - **GSD** (`/gsd:*` commands, `gsd-*` agents) owns macro-level orchestration: roadmap, phases, wave-based parallel execution, file-based state in `.planning/`. For full autonomy use `/gsd:autonomous`.
 - **Superpowers skills** (`test-driven-development`, `systematic-debugging`, `verification-before-completion`, `requesting-code-review`, `receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`, `dispatching-parallel-agents`, `writing-skills`) are engineering discipline. They apply during ALL implementation work, including inside GSD executors: no production code without a failing test first, no fixes without root cause, no completion claims without fresh verification evidence.
@@ -45,7 +47,7 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 ```
 .claude/commands/gsd/   69 GSD commands        .claude/agents/        33 GSD agents
 .claude/gsd-core/       GSD workflows/refs/templates (rewritten to project-local paths)
-.claude/skills/         76 skills: superpowers (9) + turbo (50) + gstack (13) + custom DevOps (4)
+.claude/skills/         77 skills: superpowers (9) + turbo (50) + gstack (13) + custom (5)
 products/               product workspaces (gitignored; each its own git repo on GitHub)
 docs/SOURCES.md         provenance of every import, and what was rejected and why
 scripts/new-product.sh  scaffold a product workspace; --github creates + pushes the repo

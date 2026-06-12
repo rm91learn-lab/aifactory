@@ -2,6 +2,7 @@ products/
 _research/
 daemon/logs/
 daemon/state.json
+archives/
 .turbo/
 node_modules/
 .DS_Store
