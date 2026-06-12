@@ -11,7 +11,7 @@ Ship the current state of the project to its target environment with gates befor
 
 **1. Detect the platform**
 
-Look for, in order: explicit instructions in the product's CLAUDE.md or docs; then config files:
+**Factory default: Cloudflare (free tier).** If no platform is configured yet, target Cloudflare — Pages for sites/frontends, Workers for APIs, D1/KV for data — and verify auth with `npx -y wrangler whoami` first. Otherwise look for, in order: explicit instructions in the product's CLAUDE.md or docs; then config files:
 
 | Signal | Platform | Deploy command |
 |---|---|---|

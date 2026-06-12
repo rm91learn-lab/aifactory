@@ -41,6 +41,10 @@ if (process.argv.includes('--check')) {
     checks.push('ok: gh authenticated');
   } catch { checks.push('FAIL: gh not authenticated (run `gh auth login`)'); }
   checks.push(fs.existsSync(path.join(ROOT, 'scripts', 'new-product.sh')) ? 'ok: new-product.sh' : 'MISSING: scripts/new-product.sh');
+  try {
+    const { stdout } = await execFileP('npx', ['-y', 'wrangler', 'whoami'], { timeout: 60000 });
+    checks.push(/not authenticated/i.test(stdout) ? 'note: Cloudflare not connected — run `npx wrangler login` once to enable autonomous hosting' : 'ok: Cloudflare connected (autonomous hosting enabled)');
+  } catch { checks.push('note: Cloudflare check failed — run `npx wrangler login` once to enable autonomous hosting'); }
   checks.push(process.env.TELEGRAM_BOT_TOKEN ? 'ok: TELEGRAM_BOT_TOKEN set' : 'note: TELEGRAM_BOT_TOKEN not set (required to run)');
   console.log(checks.join('\n'));
   process.exit(checks.some(c => c.startsWith('MISSING') || c.startsWith('FAIL')) ? 1 : 0);

@@ -98,6 +98,7 @@ If the customer later wants more work done on the repo they now own: they add yo
 ## Requirements
 
 - **Required:** Claude Code, `git`, [GitHub CLI](https://cli.github.com) (`gh`) — PR and CI skills depend on it
+- **Hosting (one-time):** a free [Cloudflare](https://dash.cloudflare.com/sign-up) account + `npx wrangler login` — after this, every product deploys itself to a live `*.pages.dev` / `*.workers.dev` URL during the build (free tier only; agents are forbidden from enabling paid features) and enrolls in the monitoring watchdog automatically. Until it's done, builds still complete but stop at "ready to host".
 - **Optional:** OpenAI Codex CLI (enables `peer-review` second-model review; skills fall back without it), a browser tool for `smoke-test`/`exploratory-test` (APIs fall back to `curl`), a global [gstack](https://github.com/garrytan/gstack) install (enables config/telemetry/learnings and the browse daemon in the gstack-layer skills; they degrade to defaults without it)
 - GSD's optional runtime hooks (update checker, context monitor) are not installed; add with `npx @opengsd/gsd-core@latest --claude --local` if wanted (Node ≥ 22)
 
