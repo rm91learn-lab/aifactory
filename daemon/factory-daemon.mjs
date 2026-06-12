@@ -90,7 +90,7 @@ function isTransientFailure(logBase) {
 
 // Spawn a headless agent whose every action streams into the product's
 // .factory-activity.json — the dashboard's live activity feed.
-function spawnAgent(dest, prompt, logName) {
+function spawnAgent(dest, prompt, logName, runKind) {
   const logStream = fs.createWriteStream(path.join(LOG_DIR, `${logName}.log`), { flags: 'a' });
   const child = spawn(CONFIG.claudeBin,
     ['-p', prompt, '--permission-mode', CONFIG.permissionMode, '--output-format', 'stream-json', '--verbose', ...CONFIG.extraClaudeArgs],
@@ -100,6 +100,7 @@ function spawnAgent(dest, prompt, logName) {
   let act = { updatedAt: null, counts: { actions: 0, writes: 0, commands: 0 }, entries: [], tasks: [] };
   try { act = { ...act, ...JSON.parse(fs.readFileSync(actFile, 'utf8')) }; } catch {}
   act.tasks = []; // each run gets a fresh task list; history lives in the feed
+  if (runKind) act.runKind = runKind;
   let dirty = false;
   const parser = makeLineParser((entry) => {
     act.counts.actions++;
@@ -356,7 +357,7 @@ async function startUpdate({ product, idea, chatId, qaRound = 0, retried = 0 }) 
   const dest = path.join(ROOT, 'products', product);
   if (!fs.existsSync(dest)) throw new Error(`product "${product}" is not on this machine`);
   const prompt = UPDATE_TEMPLATE.replace('{{PRODUCT}}', product).replace('{{REQUEST}}', idea);
-  const child = spawnAgent(dest, prompt, `${product}-update`);
+  const child = spawnAgent(dest, prompt, `${product}-update`, "change");
   running.set(product, { child, chatId });
   saveState();
   refreshDashboard();
@@ -406,7 +407,7 @@ async function startBuild({ idea, chatId, name, retried = 0 }) {
 
   // 3. Launch the headless build.
   const prompt = PROMPT_TEMPLATE.replace('{{IDEA}}', idea);
-  const child = spawnAgent(dest, prompt, slug);
+  const child = spawnAgent(dest, prompt, slug, "build");
 
   const entry = { child, chatId, lastPhaseSig: '' };
   entry.watcher = setInterval(() => checkProgress(slug, dest, entry), CONFIG.statusPollSeconds * 1000);
@@ -576,7 +577,7 @@ async function rollbackProduct(name, dest, chatId, evidence) {
 // round, then we report honestly instead of looping.
 function startQA(name, dest, chatId, qaRound, summaryFile, repoUrl) {
   const prompt = QA_TEMPLATE.replace('{{PRODUCT}}', name);
-  const child = spawnAgent(dest, prompt, `${name}-qa`);
+  const child = spawnAgent(dest, prompt, `${name}-qa`, "qa");
   running.set(name, { child, chatId });
   saveState();
   refreshDashboard();
@@ -654,7 +655,7 @@ function maybeSpawnIncident(name, entry) {
     .replace('{{PRODUCT}}', name)
     .replace('{{URL}}', entry.url)
     .replace('{{OBSERVED}}', entry.error || `HTTP ${entry.httpStatus}, ${entry.fails} consecutive failures`);
-  const child = spawnAgent(dest, prompt, `${name}-incident`);
+  const child = spawnAgent(dest, prompt, `${name}-incident`, "incident");
   log(`incident agent dispatched: ${name}`);
   for (const chatId of CONFIG.allowedChatIds) send(chatId, `🚑 ${name} is having trouble — I'm on it. I'll fix it and report back; no action needed from you.`);
   child.on('exit', async (code) => {

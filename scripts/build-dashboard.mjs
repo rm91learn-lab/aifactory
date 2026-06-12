@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 5; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 6; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -79,7 +79,8 @@ function buildBoard(planningDir, roadmapText) {
     }
     const dn = dirs[s.n];
     if (dn) seen.add(dn);
-    board.push({ name: s.name, status: dn ? dirStatus(dn) : 'backlog', tasks: s.tasks });
+    const st = dn ? dirStatus(dn) : 'backlog';
+    board.push({ name: s.name, status: st === 'planning' ? 'backlog' : st, tasks: s.tasks });
   }
   for (const dn of Object.values(dirs)) {
     if (seen.has(dn)) continue;
@@ -155,6 +156,7 @@ export function collectProducts(root = ROOT) {
       stage: !hasPlanning && !tasks.length ? 'scaffolded' : pctFinal >= 100 ? 'ready' : (board.length || tasks.length) ? 'in progress' : 'planning',
       health: h ? { up: h.up, ms: h.ms, url: h.url, downSince: h.downSince } : null,
       activity: a ? { updatedAt: a.updatedAt, counts: a.counts, entries: (a.entries || []).slice(-15) } : null,
+      runLabel: { build: 'building', change: 'applying change', qa: 'running QA', incident: 'fixing incident' }[a?.runKind] || (a?.runKind ? 'working' : null),
       requirements: read(path.join(planning, 'REQUIREMENTS.md')).trim().slice(0, 6000),
       assumptions: read(path.join(planning, 'ASSUMPTIONS.md')).replace(/^# .*\n+/,'').replace(/^Each entry.*\n+/m,'').trim().slice(0, 4000),
     };
@@ -220,6 +222,15 @@ function html(products) {
   .ph.dev{border-color:var(--build)}
   .ph.done{opacity:.75}
   .ph.change{border-color:var(--build);background:rgba(210,153,34,.07)}
+  .runstrip{border:1px solid var(--build);background:rgba(210,153,34,.06);border-radius:10px;padding:12px 14px;margin-bottom:16px}
+  .runstrip-h{font-size:13px;color:var(--build);font-weight:500}
+  .runstrip-now{font-size:13px;color:var(--text);margin-top:4px}
+  ul.runstrip-list{list-style:none;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px}
+  ul.runstrip-list li{font-size:12px;color:var(--dim);border:1px solid var(--border);border-radius:14px;padding:2px 10px}
+  ul.runstrip-list li.rs-completed{color:var(--accent);border-color:var(--accent)}
+  ul.runstrip-list li.rs-completed::before{content:"✓ "}
+  ul.runstrip-list li.rs-in_progress{color:var(--build);border-color:var(--build)}
+  ul.runstrip-list li.rs-in_progress::before{content:"▶ "}
   .ph .tprog{font-size:11px;color:var(--dim);margin-top:4px}
   .ph ul{list-style:none;margin-top:6px;font-size:12px}
   .ph li{color:var(--dim);padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -253,7 +264,6 @@ var DATA = ${data};
 var products = DATA.products, filter = 'all', q = '', last = Date.now();
 var COLS = [
   ['backlog', '📋 Backlog'],
-  ['planning', '🧠 Planning'],
   ['dev', '🛠 In Development'],
   ['qa', '🧪 Testing & QA'],
   ['done', '✅ Done']
@@ -289,8 +299,12 @@ function matches(p) {
   return true;
 }
 function titleBadges(p, h) {
-  if (p.building) h.appendChild(badge('🔨 building', 'building'));
-  h.appendChild(badge(p.stage + (p.version ? ' · v' + p.version : ''), p.stage === 'ready' ? 'ready' : ''));
+  // building and a settled stage are mutually exclusive — never both.
+  if (p.building) {
+    h.appendChild(badge('🔨 ' + (p.runLabel || 'working') + (p.version ? ' · v' + p.version : ''), 'building'));
+  } else {
+    h.appendChild(badge(p.stage + (p.version ? ' · v' + p.version : ''), p.stage === 'ready' ? 'ready' : ''));
+  }
   if (p.health) h.appendChild(badge(p.health.up ? '● live · ' + p.health.ms + 'ms' : '● DOWN', p.health.up ? 'live' : 'down'));
 }
 function gridCard(p) {
@@ -344,8 +358,24 @@ function renderProduct(view, p) {
   }
   view.appendChild(links);
 
-  // Phase board when formal planning exists; otherwise the agent's own live
-  // task list — the board is never empty while work is happening.
+  // A currently-running agent's task list is TRANSIENT process state, not product
+  // structure — it gets its own strip, never mixed into the permanent phase board.
+  // (Its completed steps must never sit in the product's Done column.)
+  if (p.building && p.tasks && p.tasks.length) {
+    var rt = p.tasks;
+    var rdone = rt.filter(function (t) { return t.status === 'completed'; }).length;
+    var strip = el('div', 'runstrip');
+    strip.appendChild(el('div', 'runstrip-h', '🔧 ' + (p.runLabel || 'work') + ' in progress — ' + rdone + ' of ' + rt.length + ' steps'));
+    var cur = rt.find(function (t) { return t.status === 'in_progress'; });
+    if (cur) strip.appendChild(el('div', 'runstrip-now', '▶ ' + cur.s));
+    var rul = el('ul', 'runstrip-list');
+    rt.forEach(function (t) { rul.appendChild(el('li', 'rs-' + (t.status || 'pending'), t.s)); });
+    strip.appendChild(rul);
+    view.appendChild(strip);
+  }
+
+  // The kanban shows permanent product phases. Only a never-deployed product mid
+  // first build (no phases yet) falls back to showing its live task list as the board.
   var useTasks = !p.board.length && p.tasks && p.tasks.length;
   var cols = useTasks
     ? [['pending', '📋 To do'], ['in_progress', '🛠 In progress'], ['completed', '✅ Done']]
@@ -355,23 +385,15 @@ function renderProduct(view, p) {
       ? p.tasks.filter(function (t) { return (t.status || 'pending') === key; }).map(function (t) { return { name: t.s, status: key, tasks: [] }; })
       : p.board.filter(function (ph) { return ph.status === key; });
   };
-  // Live change-work: while an update runs on a product that already has phases,
-  // the agent's current tasks appear as 🔧 cards in the matching columns.
-  var changeMap = { pending: 'backlog', in_progress: 'dev', completed: 'done' };
-  var liveChange = (!useTasks && p.building && p.tasks && p.tasks.length) ? p.tasks : [];
 
   var board = el('div', 'board');
   if (useTasks) board.style.gridTemplateColumns = 'repeat(3,1fr)';
   cols.forEach(function (col) {
     var c = el('div', 'col');
     var items = items_of(col[0]);
-    var changeItems = liveChange.filter(function (t) { return changeMap[t.status || 'pending'] === col[0]; });
     var h3 = el('h3', null, col[1] + ' ');
-    h3.appendChild(el('span', 'n', String(items.length + changeItems.length)));
+    h3.appendChild(el('span', 'n', String(items.length)));
     c.appendChild(h3);
-    changeItems.forEach(function (t) {
-      c.appendChild(el('div', 'ph change', '🔧 ' + t.s));
-    });
     items.forEach(function (ph) {
       var card = el('div', 'ph ' + ph.status, ph.name);
       if (ph.tasks.length) {
