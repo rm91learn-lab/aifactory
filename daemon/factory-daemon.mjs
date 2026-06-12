@@ -30,6 +30,8 @@ const MON = { intervalSeconds: 300, failThreshold: 3, timeoutMs: 10000, autoInci
 const PROMPT_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'build-prompt.md'), 'utf8');
 const INCIDENT_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'incident-prompt.md'), 'utf8');
 const UPDATE_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'update-prompt.md'), 'utf8');
+const QA_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'qa-prompt.md'), 'utf8');
+const QA_ENABLED = CONFIG.qa?.enabled !== false;
 
 // --- self-check mode (no token needed): validate environment and exit -------
 if (process.argv.includes('--check')) {
@@ -340,7 +342,7 @@ function pump() {
   }
 }
 
-async function startUpdate({ product, idea, chatId }) {
+async function startUpdate({ product, idea, chatId, qaRound = 0 }) {
   const dest = path.join(ROOT, 'products', product);
   if (!fs.existsSync(dest)) throw new Error(`product "${product}" is not on this machine`);
   const prompt = UPDATE_TEMPLATE.replace('{{PRODUCT}}', product).replace('{{REQUEST}}', idea);
@@ -355,6 +357,11 @@ async function startUpdate({ product, idea, chatId }) {
     try { await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', 'factory: update checkpoint'); } catch {}
     try { await gitIn(dest, 'push', 'origin', 'HEAD'); } catch (err) { log(`${product}: update push failed:`, err.message); }
     refreshDashboard();
+    if (code === 0 && QA_ENABLED) {
+      await send(chatId, `🛠 Change to "${product}" finished — independent QA is testing it before I call it done.`);
+      startQA(product, dest, chatId, qaRound, 'UPDATE-SUMMARY.txt', '');
+      return;
+    }
     const summary = readSummary(dest, 'UPDATE-SUMMARY.txt');
     await send(chatId, code === 0
       ? `✅ Done with "${product}".\n\n${summary || 'The change is in, but no summary was written — ask me to check if unsure.'}`
@@ -401,6 +408,11 @@ async function startBuild({ idea, chatId, name }) {
     } catch { /* nothing to commit */ }
     try { await gitIn(dest, 'push', 'origin', 'HEAD'); } catch (err) { log(`${slug}: final push failed:`, err.message); }
     refreshDashboard();
+    if (code === 0 && QA_ENABLED) {
+      await send(chatId, `🛠 "${slug}" build finished — handing it to independent QA before I call it done.`);
+      startQA(slug, dest, chatId, 0, 'BUILD-SUMMARY.txt', repoUrl);
+      return;
+    }
     const summary = readSummary(dest, 'BUILD-SUMMARY.txt');
     await send(chatId, code === 0
       ? `✅ "${slug}" is built.\n\n${summary || 'No summary was written — the full report (FINAL-REPORT.md) is in the repo.'}\n\n${repoUrl}\n/status for the overview.`
@@ -464,6 +476,46 @@ function refreshDashboard() {
 }
 
 const gitIn = (cwd, ...args) => execFileP('git', ['-C', cwd, ...args]);
+
+// Independent QA gate: a separate agent (fresh context, tester persona) tries to
+// break what the builder just shipped. FAIL triggers ONE bounded fix-and-retest
+// round, then we report honestly instead of looping.
+function startQA(name, dest, chatId, qaRound, summaryFile, repoUrl) {
+  const prompt = QA_TEMPLATE.replace('{{PRODUCT}}', name);
+  const child = spawnAgent(dest, prompt, `${name}-qa`);
+  running.set(name, { child, chatId });
+  saveState();
+  refreshDashboard();
+  child.on('exit', async () => {
+    running.delete(name);
+    saveState();
+    try { await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', 'factory: QA round artifacts'); } catch {}
+    try { await gitIn(dest, 'push', 'origin', 'HEAD'); } catch (err) { log(`${name}: QA push failed:`, err.message); }
+    refreshDashboard();
+    const verdictRaw = readSummary(dest, 'QA-VERDICT.txt');
+    const pass = /^PASS/i.test(verdictRaw);
+    const verdict = verdictRaw.replace(/^(PASS|FAIL)\s*/i, '').trim();
+    const summary = readSummary(dest, summaryFile);
+    if (pass) {
+      await send(chatId, `🧪✅ Independent QA passed "${name}".\n${verdict}\n\n${summary || ''}${repoUrl ? `\n${repoUrl}` : ''}`.trim());
+    } else if (!verdictRaw) {
+      await send(chatId, `🧪⚠️ QA finished for "${name}" but wrote no verdict — treat it as untested. QA log: daemon/logs/${name}-qa.log\n\n${summary || ''}`.trim());
+    } else if (qaRound >= 1) {
+      await send(chatId, `🧪❌ QA still finds problems in "${name}" after one fix round. I'm stopping and being honest instead of looping:\n${verdict || 'See QA-REPORT.md in the repo.'}\nSend me a message when you want another round.`);
+    } else {
+      await send(chatId, `🧪🔧 QA found problems in "${name}" — fixing them now, then re-testing:\n${verdict || 'See QA-REPORT.md.'}`);
+      state.queue.push({
+        type: 'update',
+        product: name,
+        chatId,
+        qaRound: 1,
+        idea: 'Independent QA just failed this product — fix every finding in QA-REPORT.md at root cause, with tests proving each fix. Do not edit or delete QA-REPORT.md or QA-VERDICT.txt; the next QA round will rewrite them.',
+      });
+      saveState();
+    }
+    pump();
+  });
+}
 
 // --- continuous monitoring: cheap HTTP checks, AI agent only on failure ------
 async function runMonitor() {
