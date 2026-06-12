@@ -65,9 +65,11 @@ export function collectProducts(root = ROOT) {
       .filter(d => d.isDirectory() && !d.name.startsWith('.')).map(d => d.name).sort();
   } catch {}
 
-  // Daemon marks in-flight builds in daemon/state.json.
+  // Daemon marks in-flight builds in daemon/state.json; the monitor writes daemon/health.json.
   let active = [];
   try { active = JSON.parse(read(path.join(root, 'daemon', 'state.json'))).active || []; } catch {}
+  let healthAll = {};
+  try { healthAll = JSON.parse(read(path.join(root, 'daemon', 'health.json'))).products || {}; } catch {}
 
   return names.map(name => {
     const dir = path.join(productsDir, name);
@@ -92,6 +94,7 @@ export function collectProducts(root = ROOT) {
       lastCommit: git(dir, 'log', '-1', '--format=%cr · %s').slice(0, 100),
       commits: Number(git(dir, 'rev-list', '--count', 'HEAD')) || 0,
       stage: !hasPlanning ? 'scaffolded' : pct >= 100 ? 'complete' : phases.length ? 'in progress' : 'planning',
+      health: healthAll[name] ? { up: healthAll[name].up, ms: healthAll[name].ms, url: healthAll[name].url, downSince: healthAll[name].downSince } : null,
     };
   });
 }
@@ -101,7 +104,7 @@ export function statusText(root = ROOT) {
   if (!products.length) return 'No products yet. Send an idea to start one.';
   return products.map(p => {
     const bar = '▰'.repeat(Math.round(p.pct / 10)) + '▱'.repeat(10 - Math.round(p.pct / 10));
-    const flag = p.building ? ' 🔨 building' : '';
+    const flag = (p.building ? ' 🔨 building' : '') + (p.health ? (p.health.up ? ' 🟢' : ' 🔴 DOWN') : '');
     return `${p.name}${flag}\n${bar} ${p.pct}% · ${p.stage}${p.version ? ' · v' + p.version : ''}\n${p.stateLine || p.lastCommit || 'no activity yet'}`;
   }).join('\n\n');
 }
@@ -126,6 +129,8 @@ function html(products) {
   .badge{font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--dim)}
   .badge.building{color:var(--build);border-color:var(--build)}
   .badge.complete{color:var(--accent);border-color:var(--accent)}
+  .badge.live{color:var(--accent);border-color:var(--accent)}
+  .badge.down{color:#f85149;border-color:#f85149}
   .idea{color:var(--dim);font-size:13px;margin:8px 0 12px;min-height:1em}
   .barwrap{background:var(--bar);border-radius:6px;height:8px;overflow:hidden;margin:6px 0 4px}
   .bar{background:var(--accent);height:100%;transition:width .4s}
@@ -142,7 +147,7 @@ function html(products) {
 <header><h1>AI-Factory</h1><span class="meta">${products.length} product${products.length === 1 ? '' : 's'} · generated ${generated}</span></header>
 ${products.length === 0 ? '<div class="empty">No products yet — send an idea to the factory bot or run scripts/new-product.sh</div>' : `<div class="grid">
 ${products.map(p => `<div class="card">
-  <h2>${esc(p.name)}${p.building ? '<span class="badge building">building</span>' : ''}<span class="badge ${p.stage === 'complete' ? 'complete' : ''}">${esc(p.stage)}${p.version ? ' · v' + esc(p.version) : ''}</span></h2>
+  <h2>${esc(p.name)}${p.building ? '<span class="badge building">building</span>' : ''}<span class="badge ${p.stage === 'complete' ? 'complete' : ''}">${esc(p.stage)}${p.version ? ' · v' + esc(p.version) : ''}</span>${p.health ? `<span class="badge ${p.health.up ? 'live' : 'down'}">${p.health.up ? `● live · ${p.health.ms}ms` : '● DOWN'}</span>` : ''}</h2>
   <div class="idea">${esc(p.idea)}</div>
   <div class="barwrap"><div class="bar" style="width:${p.pct}%"></div></div>
   <div class="pct">${p.pct}%${p.checkboxes.total ? ` · ${p.checkboxes.done}/${p.checkboxes.total} tasks` : ''}${p.stateLine ? ' · ' + esc(p.stateLine) : ''}</div>

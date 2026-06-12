@@ -18,7 +18,7 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 | Ship | turbo | `finalize` → `ship` / `split-and-ship` → `review-pr` → `resolve-pr-comments` |
 | Docs | gstack | `document-generate`, `document-release` (post-ship) |
 | CI / deploy / release | custom skills | `fix-ci`, `deploy`, `release` |
-| Operate | custom + turbo | `post-deploy-monitor`, `investigate`, `self-improve` |
+| Operate | custom + turbo | `post-deploy-monitor` (canary window) → daemon watchdog (continuous, via DEPLOY.json) → incident agent on failure; `investigate`, `self-improve` |
 | Handoff (after payment) | custom | `handoff-product` — secrets scan, strip kit, archive mirror, transfer repo to customer |
 | Re-engage (customer-owned repo) | custom | `scripts/adopt-product.sh <git-url>` → `/gsd:import` → deliver via PRs |
 

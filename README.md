@@ -69,6 +69,15 @@ Then any plain message to the bot is treated as a product idea: workspace → re
 
 `node scripts/build-dashboard.mjs` scans every product's `.planning/` state and writes [dashboard/index.html](dashboard/index.html) — per-product progress bars, phase checklists, current activity, version, and repo links (plus `dashboard/data.json` for tooling). Open it locally (`open dashboard/index.html`), or set `pushDashboard: true` in daemon/config.json to auto-commit it and serve via GitHub Pages (repo Settings → Pages → main branch). The daemon regenerates it on every phase change; it self-refreshes every 60 s.
 
+## Continuous monitoring
+
+Two layers, deliberately: **cheap sensors, smart responder**. No always-on AI agent per product — that would burn tokens doing what an HTTP check does for free.
+
+1. **Watchdog (free, continuous):** the daemon checks every product that has a `DEPLOY.json` (written automatically by the `deploy` skill) every 5 minutes — status, latency. After 3 consecutive failures you get one 🔴 Telegram alert (and one 🟢 on recovery); health badges appear on the dashboard. `/health` in chat shows live status. Standalone pass without the daemon: `node scripts/monitor.mjs` (cron-able).
+2. **Incident agent (on-demand, only when something breaks):** with `monitor.autoIncident: true` in daemon/config.json, a down transition dispatches a headless `claude` agent into that product with [daemon/incident-prompt.md](daemon/incident-prompt.md): diagnose with evidence, roll back only if the failure is deploy-correlated and the platform supports it, write `INCIDENT-*.md` to the repo — never code fixes (those go through the normal pipeline). One dispatch per `incidentCooldownMinutes` to prevent spawn loops. Default off: alerts-only until you've watched it work.
+
+The `post-deploy-monitor` skill remains the third piece: the intensive ~10-minute canary window right after each deploy, inside the build session.
+
 ## Customer handoff & re-engagement
 
 Each product lives in its own repo precisely so it can be sold as a unit. When payment clears, run the `handoff-product` skill in the product workspace: full-history secrets scan → factory kit stripped from HEAD (`.claude/`, CLAUDE.md — the `.planning/` audit trail stays, it's part of the deliverable) → local mirror archived under `archives/` (you lose the repo on transfer) → `v1.0-handoff` tag → GitHub repo transfer to the customer, who must accept it. Handoffs are logged in `docs/HANDOFFS.md`.

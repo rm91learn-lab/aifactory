@@ -42,7 +42,11 @@ If nothing matches, ask the user where this deploys rather than guessing.
 - Tail platform logs briefly for new errors (`vercel logs`, `wrangler tail`, `fly logs`, `kubectl logs`, etc.).
 
 **5. Hand off**
-- On success: report URL, version/commit deployed, and start `/post-deploy-monitor`.
+- On success: write `DEPLOY.json` at the repo root and commit+push it — this enrolls the product in the factory's continuous monitoring watchdog:
+  ```json
+  { "url": "https://the-deployed-url", "healthPath": "/", "platform": "vercel|cloudflare|fly|render|docker|k8s", "deployedAt": "<ISO timestamp>" }
+  ```
+- Report URL, version/commit deployed, and start `/post-deploy-monitor` for the immediate canary window.
 - On failure: roll back using the platform's mechanism (previous deployment alias/release) BEFORE investigating, then run `/investigate` on the captured logs.
 
 Never deploy uncommitted work, and never deploy with failing gates "just this once."

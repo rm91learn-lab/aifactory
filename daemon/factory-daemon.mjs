@@ -16,6 +16,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { buildDashboard, statusText } from '../scripts/build-dashboard.mjs';
+import { monitorPass, healthText } from '../scripts/monitor.mjs';
 
 const execFileP = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,7 +24,9 @@ const DAEMON_DIR = path.join(ROOT, 'daemon');
 const LOG_DIR = path.join(DAEMON_DIR, 'logs');
 const STATE_FILE = path.join(DAEMON_DIR, 'state.json');
 const CONFIG = JSON.parse(fs.readFileSync(path.join(DAEMON_DIR, 'config.json'), 'utf8'));
+const MON = { intervalSeconds: 300, failThreshold: 3, timeoutMs: 10000, autoIncident: false, incidentCooldownMinutes: 60, ...(CONFIG.monitor || {}) };
 const PROMPT_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'build-prompt.md'), 'utf8');
+const INCIDENT_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'incident-prompt.md'), 'utf8');
 
 // --- self-check mode (no token needed): validate environment and exit -------
 if (process.argv.includes('--check')) {
@@ -103,11 +106,13 @@ async function handleMessage(msg) {
   }
 
   if (text === '/start') {
-    await send(chatId, `AI-Factory online. Chat id ${chatId} is authorized.\n\nSend any message describing a product idea and I'll build it.\n/status — progress of all products\n/help — commands`);
+    await send(chatId, `AI-Factory online. Chat id ${chatId} is authorized.\n\nSend any message describing a product idea and I'll build it.\n/status — progress of all products\n/health — live health of deployed products\n/help — commands`);
   } else if (text === '/status') {
     await send(chatId, statusText(ROOT));
+  } else if (text === '/health') {
+    await send(chatId, healthText(ROOT));
   } else if (text === '/help') {
-    await send(chatId, 'Send a plain message = new product idea (scaffold → GitHub repo → autonomous build).\n/status — progress overview\n/start — show chat id');
+    await send(chatId, 'Send a plain message = new product idea (scaffold → GitHub repo → autonomous build).\n/status — progress overview\n/health — deployment health\n/start — show chat id');
   } else if (text.startsWith('/')) {
     await send(chatId, `Unknown command ${text.split(' ')[0]}. /help for commands.`);
   } else {
@@ -217,10 +222,53 @@ function refreshDashboard() {
 
 const gitIn = (cwd, ...args) => execFileP('git', ['-C', cwd, ...args]);
 
+// --- continuous monitoring: cheap HTTP checks, AI agent only on failure ------
+async function runMonitor() {
+  try {
+    const { transitions } = await monitorPass(ROOT, MON);
+    for (const t of transitions) {
+      const text = t.to === 'down'
+        ? `🔴 ${t.name} is DOWN — ${t.entry.error || 'HTTP ' + t.entry.httpStatus} on ${t.entry.fails} consecutive checks\n${t.entry.url}`
+        : `🟢 ${t.name} recovered (${t.entry.ms}ms)\n${t.entry.url}`;
+      for (const chatId of CONFIG.allowedChatIds) await send(chatId, text);
+      if (t.to === 'down' && MON.autoIncident) maybeSpawnIncident(t.name, t.entry);
+    }
+    if (transitions.length) refreshDashboard();
+  } catch (err) {
+    log('monitor error:', err.message);
+  }
+}
+
+function maybeSpawnIncident(name, entry) {
+  const dest = path.join(ROOT, 'products', name);
+  if (!fs.existsSync(dest)) return;
+  const last = entry.lastIncidentAt ? Date.parse(entry.lastIncidentAt) : 0;
+  if (Date.now() - last < MON.incidentCooldownMinutes * 60_000) return;
+  try { // persist the cooldown stamp so restarts don't re-dispatch
+    const hf = path.join(DAEMON_DIR, 'health.json');
+    const h = JSON.parse(fs.readFileSync(hf, 'utf8'));
+    if (h.products?.[name]) {
+      h.products[name].lastIncidentAt = new Date().toISOString();
+      fs.writeFileSync(hf, JSON.stringify(h, null, 2));
+    }
+  } catch {}
+  const prompt = INCIDENT_TEMPLATE
+    .replace('{{PRODUCT}}', name)
+    .replace('{{URL}}', entry.url)
+    .replace('{{OBSERVED}}', entry.error || `HTTP ${entry.httpStatus}, ${entry.fails} consecutive failures`);
+  const logFile = fs.openSync(path.join(LOG_DIR, `${name}-incident.log`), 'a');
+  spawn(CONFIG.claudeBin, ['-p', prompt, '--permission-mode', CONFIG.permissionMode, ...CONFIG.extraClaudeArgs],
+    { cwd: dest, stdio: ['ignore', logFile, logFile] });
+  log(`incident agent dispatched: ${name}`);
+  for (const chatId of CONFIG.allowedChatIds) send(chatId, `🚑 Incident agent dispatched for ${name} — diagnose + safe rollback only; report lands in the repo as INCIDENT-*.md`);
+}
+
 // --- main long-poll loop -----------------------------------------------------
 log(`factory daemon up — owner=${CONFIG.githubOwner}, concurrency=${CONFIG.concurrency}, allowed chats: ${CONFIG.allowedChatIds.join(', ') || '(none yet — send /start to your bot to get your chat id)'}`);
 refreshDashboard();
 pump(); // resume any queue persisted across restarts
+runMonitor();
+setInterval(runMonitor, MON.intervalSeconds * 1000);
 
 let backoff = 1;
 while (true) {

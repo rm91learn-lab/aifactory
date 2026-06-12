@@ -7,5 +7,12 @@
   "statusPollSeconds": 60,
   "claudeBin": "claude",
   "extraClaudeArgs": [],
-  "pushDashboard": false
+  "pushDashboard": false,
+  "monitor": {
+    "intervalSeconds": 300,
+    "failThreshold": 3,
+    "timeoutMs": 10000,
+    "autoIncident": false,
+    "incidentCooldownMinutes": 60
+  }
 }
