@@ -543,6 +543,9 @@ refreshDashboard();
 pump(); // resume any queue persisted across restarts
 runMonitor();
 setInterval(runMonitor, MON.intervalSeconds * 1000);
+// While any agent is working, keep the dashboard (and its cloud copy) fresh so
+// the live activity feed actually ticks for remote viewers.
+setInterval(() => { if (running.size) refreshDashboard(); }, 20_000);
 
 let backoff = 1;
 while (true) {
