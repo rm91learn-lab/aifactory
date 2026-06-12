@@ -4,6 +4,8 @@ daemon/logs/
 daemon/state.json
 daemon/.env
 archives/
+/.factory-activity.json
+/UPGRADE-SUMMARY.txt
 .turbo/
 node_modules/
 .DS_Store

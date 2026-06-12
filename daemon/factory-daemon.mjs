@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { buildDashboard, statusText } from '../scripts/build-dashboard.mjs';
 import { monitorPass, healthText } from '../scripts/monitor.mjs';
 import { makeLineParser, applyTaskOps } from '../scripts/agent-stream.mjs';
+import { checkUpstreams } from '../scripts/check-upstreams.mjs';
 
 const execFileP = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,6 +33,7 @@ const INCIDENT_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'incident-prompt
 const UPDATE_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'update-prompt.md'), 'utf8');
 const QA_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'qa-prompt.md'), 'utf8');
 const QA_ENABLED = CONFIG.qa?.enabled !== false;
+const UPGRADE_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'upgrade-prompt.md'), 'utf8');
 
 // --- self-check mode (no token needed): validate environment and exit -------
 if (process.argv.includes('--check')) {
@@ -586,6 +588,39 @@ function maybeSpawnIncident(name, entry) {
     }
   });
 }
+
+// --- autonomous self-upgrade: watch vendored sources, apply what matters ------
+// Founder directive: important upgrades happen autonomously; silence on no-ops,
+// one plain-language line after material upgrades, a ping only if humans needed.
+let upgradeRunning = false;
+async function runUpstreamCheck() {
+  if (upgradeRunning || running.size > 0) return; // only in quiet moments
+  try {
+    const updates = await checkUpstreams(ROOT);
+    if (!updates.length) return;
+    upgradeRunning = true;
+    log('upstream updates detected:', updates.map(u => `${u.name}+${u.ahead}`).join(' '));
+    const child = spawnAgent(ROOT, UPGRADE_TEMPLATE, 'factory-upgrade');
+    child.on('exit', async (code) => {
+      upgradeRunning = false;
+      const s = readSummary(ROOT, 'UPGRADE-SUMMARY.txt');
+      try { fs.unlinkSync(path.join(ROOT, 'UPGRADE-SUMMARY.txt')); } catch {}
+      try { fs.unlinkSync(path.join(ROOT, '.factory-activity.json')); } catch {}
+      if (code !== 0) {
+        for (const c of CONFIG.allowedChatIds) await send(c, '⚠️ The factory tried to update its own toolkit and hit a problem — it will retry tomorrow. (Log: daemon/logs/factory-upgrade.log)');
+      } else if (/^MATERIAL/i.test(s)) {
+        for (const c of CONFIG.allowedChatIds) await send(c, `🆙 Factory toolkit upgraded itself.\n${s.replace(/^MATERIAL\s*/i, '').trim()}`);
+      } else {
+        log('upstream check: nothing material; pins updated');
+      }
+    });
+  } catch (err) {
+    upgradeRunning = false;
+    log('upstream check failed:', err.message);
+  }
+}
+setTimeout(runUpstreamCheck, 10 * 60 * 1000);          // first pass 10 min after boot
+setInterval(runUpstreamCheck, 24 * 60 * 60 * 1000);    // then daily
 
 // --- live dashboard server (localhost only) ----------------------------------
 let lastGen = 0;
