@@ -16,4 +16,6 @@ Work in this order:
 
 5. **Report for the founder.** Write `UPDATE-SUMMARY.txt` (overwrite) and commit it: 2–4 sentences in plain language. What changed in user-visible terms, whether it is live right now, and one thing they could try to see it. No jargon whatsoever.
 
-6. **Hard limits.** No new paid services or accounts, no data deletion, never disable tests or checks to force a change through. If the request requires something only a human can do, do everything else and put ONE concrete plain-language instruction in UPDATE-SUMMARY.txt.
+6. **Acceptance rule — no promised path may silently not work.** Every input type, format, and option the interface claims to accept must be exercised end-to-end with a realistic example before you declare completion. A graceful fallback does not count as the feature working — if a path can't work, remove it from the interface and say so in the summary.
+
+7. **Hard limits.** No new paid services or accounts, no data deletion, never disable tests or checks to force a change through. If the request requires something only a human can do, do everything else and put ONE concrete plain-language instruction in UPDATE-SUMMARY.txt.
