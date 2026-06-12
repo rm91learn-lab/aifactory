@@ -1,5 +1,7 @@
 products/
 _research/
+daemon/logs/
+daemon/state.json
 .turbo/
 node_modules/
 .DS_Store

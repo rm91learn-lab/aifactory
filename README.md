@@ -35,14 +35,39 @@ Fully hands-off: `/gsd:autonomous` runs every remaining phase end to end.
 ## Quickstart
 
 ```bash
-# 1. Scaffold a product workspace (gets its own git repo + a copy of the kit)
-scripts/new-product.sh my-product
+# 1. Scaffold a product workspace (own git repo + a copy of the kit; --github also creates the remote)
+scripts/new-product.sh my-product --github
 
 # 2. Start building
 cd products/my-product && claude
 > /gsd:new-project        # interactive: questions → requirements → roadmap
 > /gsd:autonomous         # ...or phase by phase: /gsd:plan-phase → /gsd:execute-phase
 ```
+
+## Remote control via Telegram
+
+Send product ideas from your phone; the factory scaffolds the workspace, creates the GitHub repo, and runs the autonomous build — pinging you at each phase.
+
+```bash
+# one-time setup
+# 1. Telegram: talk to @BotFather → /newbot → copy the token
+export TELEGRAM_BOT_TOKEN=123456:ABC...
+# 2. preflight
+node daemon/factory-daemon.mjs --check
+# 3. run it
+node daemon/factory-daemon.mjs
+# 4. message your bot /start, copy your chat id into daemon/config.json → allowedChatIds, restart
+```
+
+Then any plain message to the bot is treated as a product idea: workspace → repo under `githubOwner` (daemon/config.json) → headless `claude` build using [daemon/build-prompt.md](daemon/build-prompt.md) (assumptions logged to `.planning/ASSUMPTIONS.md`, no paid deploys, FINAL-REPORT.md at the end). `/status` returns the progress of every product. Builds queue at `concurrency` (default 1). Logs land in `daemon/logs/<product>.log`.
+
+> Heads-up: headless builds run with `--permission-mode bypassPermissions` inside the product workspace (configurable in daemon/config.json) — that's what makes them autonomous. Keep the bot token private and the allowlist tight.
+>
+> WhatsApp: possible via Meta's Cloud API or Twilio, but needs business verification and a public webhook; the daemon's transport is isolated enough to add it as a second adapter later.
+
+## Dashboard
+
+`node scripts/build-dashboard.mjs` scans every product's `.planning/` state and writes [dashboard/index.html](dashboard/index.html) — per-product progress bars, phase checklists, current activity, version, and repo links (plus `dashboard/data.json` for tooling). Open it locally (`open dashboard/index.html`), or set `pushDashboard: true` in daemon/config.json to auto-commit it and serve via GitHub Pages (repo Settings → Pages → main branch). The daemon regenerates it on every phase change; it self-refreshes every 60 s.
 
 ## Requirements
 

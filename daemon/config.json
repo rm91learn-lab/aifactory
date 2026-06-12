@@ -1,0 +1,11 @@
+{
+  "allowedChatIds": [],
+  "githubOwner": "rm91learn-lab",
+  "repoVisibility": "private",
+  "permissionMode": "bypassPermissions",
+  "concurrency": 1,
+  "statusPollSeconds": 60,
+  "claudeBin": "claude",
+  "extraClaudeArgs": [],
+  "pushDashboard": false
+}

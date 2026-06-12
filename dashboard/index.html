@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="60">
+<title>AI-Factory Dashboard</title>
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--dim:#8b949e;--accent:#3fb950;--build:#d29922;--bar:#21262d}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,'Segoe UI',Roboto,sans-serif;padding:32px 24px;max-width:1100px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:28px}
+  h1{font-size:22px;font-weight:600}
+  .meta{color:var(--dim);font-size:13px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px}
+  .card h2{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .badge{font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--dim)}
+  .badge.building{color:var(--build);border-color:var(--build)}
+  .badge.complete{color:var(--accent);border-color:var(--accent)}
+  .idea{color:var(--dim);font-size:13px;margin:8px 0 12px;min-height:1em}
+  .barwrap{background:var(--bar);border-radius:6px;height:8px;overflow:hidden;margin:6px 0 4px}
+  .bar{background:var(--accent);height:100%;transition:width .4s}
+  .pct{font-size:13px;color:var(--dim)}
+  ul.phases{list-style:none;margin:12px 0 0;font-size:13px}
+  ul.phases li{padding:2px 0;color:var(--dim)}
+  ul.phases li.done{color:var(--text)}
+  ul.phases li.done::before{content:"✓ ";color:var(--accent)}
+  ul.phases li:not(.done)::before{content:"○ ";color:var(--dim)}
+  .foot{margin-top:12px;font-size:12px;color:var(--dim);border-top:1px solid var(--border);padding-top:10px}
+  .foot a{color:#58a6ff;text-decoration:none}
+  .empty{color:var(--dim);text-align:center;padding:80px 0;font-size:15px}
+</style></head><body>
+<header><h1>AI-Factory</h1><span class="meta">0 products · generated 2026-06-12 16:13 UTC</span></header>
+<div class="empty">No products yet — send an idea to the factory bot or run scripts/new-product.sh</div>
+</body></html>

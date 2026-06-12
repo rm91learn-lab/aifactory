@@ -46,7 +46,11 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 .claude/commands/gsd/   69 GSD commands        .claude/agents/        33 GSD agents
 .claude/gsd-core/       GSD workflows/refs/templates (rewritten to project-local paths)
 .claude/skills/         76 skills: superpowers (9) + turbo (50) + gstack (13) + custom DevOps (4)
-products/               product workspaces (gitignored; own git repos)
+products/               product workspaces (gitignored; each its own git repo on GitHub)
 docs/SOURCES.md         provenance of every import, and what was rejected and why
-scripts/new-product.sh  scaffold a new product workspace with this kit
+scripts/new-product.sh  scaffold a product workspace; --github creates + pushes the repo
+scripts/build-dashboard.mjs  regenerate dashboard/index.html from products/*/.planning state
+daemon/factory-daemon.mjs    Telegram ingress: ideas in → autonomous builds out (see README)
 ```
+
+When a build runs headless via the daemon, follow `daemon/build-prompt.md`: never wait for input, log every assumption to `.planning/ASSUMPTIONS.md`, push after each phase, no paid deployments, finish with FINAL-REPORT.md.
