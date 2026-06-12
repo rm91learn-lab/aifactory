@@ -107,12 +107,19 @@ function dashboardLink() {
   return cloud?.enabled && cloud.url ? cloud.url : `http://localhost:${CONFIG.dashboardPort || 7717}`;
 }
 
-function slugify(idea) {
-  let base = idea.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim()
-    .split(/\s+/).slice(0, 4).join('-').slice(0, 32).replace(/^-+|-+$/g, '') || 'product';
+function slugify(text) {
+  let base = text.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim()
+    .split(/\s+/).join('-').slice(0, 40).replace(/^-+|-+$/g, '') || 'product';
   let slug = base, n = 2;
   while (fs.existsSync(path.join(ROOT, 'products', slug))) slug = `${base}-${n++}`;
   return slug;
+}
+
+const STOPWORDS = new Set(['a', 'an', 'the', 'i', 'we', 'my', 'our', 'your', 'for', 'with', 'and', 'or', 'to', 'of', 'in', 'on', 'that', 'this', 'it', 'is', 'be', 'want', 'need', 'make', 'build', 'create', 'please', 'can', 'you', 'me', 'app', 'website', 'site', 'product', 'just', 'like', 'some']);
+function suggestName(idea) {
+  const words = idea.toLowerCase().replace(/[^a-z0-9\s-]/g, '').split(/\s+/)
+    .filter(w => w && !STOPWORDS.has(w)).slice(0, 3);
+  return words.length ? words.join('-').slice(0, 40) : 'my-product';
 }
 
 async function handleMessage(msg) {
@@ -188,31 +195,57 @@ async function routeIdea(chatId, text) {
     return;
   }
 
+  if (pending?.stage === 'name') {
+    pendingIdeas.delete(chatId);
+    if (/ignore|cancel/i.test(text) || text.startsWith('❌')) {
+      await send(chatId, 'Cancelled. Nothing was started.');
+      return;
+    }
+    const name = slugify(text);
+    const action = { type: 'build', idea: pending.idea, chatId, name };
+    pendingIdeas.set(chatId, { stage: 'confirm', idea: pending.idea, action });
+    await tg('sendMessage', {
+      chat_id: chatId,
+      text: `Final check — I'm about to build "${name}" from:\n"${preview(pending.idea)}"\n\nThat means: a private repo called ${name}, an autonomous build, and a live demo link when done.\n\nGo ahead?`,
+      reply_markup: {
+        keyboard: [[{ text: '✅ Yes, start' }], [{ text: '❌ Cancel' }]],
+        one_time_keyboard: true,
+        resize_keyboard: true,
+      },
+    });
+    return;
+  }
+
   if (pending?.stage === 'route') {
     pendingIdeas.delete(chatId);
     if (/ignore/i.test(text) || text.startsWith('❌')) {
       await send(chatId, 'Okay, ignored. Nothing was started.');
       return;
     }
-    let action = null;
     if (/new product/i.test(text) || text.startsWith('🆕')) {
-      action = { type: 'build', idea: pending.idea, chatId };
-    } else {
-      const pick = text.trim().toLowerCase();
-      const target = products.find(p => p.toLowerCase() === pick) || products.find(p => pick.includes(p.toLowerCase()));
-      if (target) action = { type: 'update', product: target, idea: pending.idea, chatId };
+      pendingIdeas.set(chatId, { stage: 'name', idea: pending.idea });
+      await tg('sendMessage', {
+        chat_id: chatId,
+        text: 'What should this product be called? Tap my suggestion or type your own name (it becomes the repo and demo link, e.g. yoga-booking):',
+        reply_markup: {
+          keyboard: [[{ text: suggestName(pending.idea) }], [{ text: '❌ Cancel' }]],
+          one_time_keyboard: true,
+          resize_keyboard: true,
+        },
+      });
+      return;
     }
-    if (!action) {
+    const pick = text.trim().toLowerCase();
+    const target = products.find(p => p.toLowerCase() === pick) || products.find(p => pick.includes(p.toLowerCase()));
+    if (!target) {
       await send(chatId, `I don't recognize "${text.trim()}", so nothing was started. Send the request again to retry.`);
       return;
     }
+    const action = { type: 'update', product: target, idea: pending.idea, chatId };
     pendingIdeas.set(chatId, { stage: 'confirm', idea: pending.idea, action });
-    const what = action.type === 'build'
-      ? `build a NEW product from:\n"${preview(pending.idea)}"\n\nThat means: a new private repo, an autonomous build, and a live demo link when done.`
-      : `change "${action.product}" based on:\n"${preview(pending.idea)}"`;
     await tg('sendMessage', {
       chat_id: chatId,
-      text: `Final check — I'm about to ${what}\n\nGo ahead?`,
+      text: `Final check — I'm about to change "${target}" based on:\n"${preview(pending.idea)}"\n\nGo ahead?`,
       reply_markup: {
         keyboard: [[{ text: '✅ Yes, start' }], [{ text: '❌ Cancel' }]],
         one_time_keyboard: true,
@@ -287,8 +320,8 @@ async function startUpdate({ product, idea, chatId }) {
   });
 }
 
-async function startBuild({ idea, chatId }) {
-  const slug = slugify(idea);
+async function startBuild({ idea, chatId, name }) {
+  const slug = name && fs.existsSync(path.join(ROOT, 'products', name)) ? slugify(name) : (name || slugify(suggestName(idea)));
   const dest = path.join(ROOT, 'products', slug);
   await send(chatId, `🏭 Building "${slug}"\n1/3 scaffolding workspace…`);
 
