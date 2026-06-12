@@ -18,6 +18,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { buildDashboard, statusText } from '../scripts/build-dashboard.mjs';
 import { monitorPass, healthText } from '../scripts/monitor.mjs';
+import { makeLineParser } from '../scripts/agent-stream.mjs';
 
 const execFileP = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -73,6 +74,42 @@ function listProducts() {
 
 function readSummary(dest, file) {
   try { return fs.readFileSync(path.join(dest, file), 'utf8').trim().slice(0, 1500); } catch { return ''; }
+}
+
+// Spawn a headless agent whose every action streams into the product's
+// .factory-activity.json — the dashboard's live activity feed.
+function spawnAgent(dest, prompt, logName) {
+  const logStream = fs.createWriteStream(path.join(LOG_DIR, `${logName}.log`), { flags: 'a' });
+  const child = spawn(CONFIG.claudeBin,
+    ['-p', prompt, '--permission-mode', CONFIG.permissionMode, '--output-format', 'stream-json', '--verbose', ...CONFIG.extraClaudeArgs],
+    { cwd: dest, stdio: ['ignore', 'pipe', 'pipe'] });
+
+  const actFile = path.join(dest, '.factory-activity.json');
+  let act = { updatedAt: null, counts: { actions: 0, writes: 0, commands: 0 }, entries: [] };
+  try { act = { ...act, ...JSON.parse(fs.readFileSync(actFile, 'utf8')) }; } catch {}
+  let dirty = false;
+  const parser = makeLineParser((entry) => {
+    act.counts.actions++;
+    if (entry.kind === 'write') act.counts.writes++;
+    if (entry.kind === 'command') act.counts.commands++;
+    act.entries.push(entry);
+    if (act.entries.length > 40) act.entries = act.entries.slice(-40);
+    act.updatedAt = entry.t;
+    dirty = true;
+  });
+  const flush = setInterval(() => {
+    if (!dirty) return;
+    dirty = false;
+    try { fs.writeFileSync(actFile, JSON.stringify(act)); } catch {}
+  }, 2000);
+  child.stdout.on('data', (c) => { logStream.write(c); parser(c); });
+  child.stderr.on('data', (c) => logStream.write(c));
+  child.on('exit', () => {
+    clearInterval(flush);
+    try { fs.writeFileSync(actFile, JSON.stringify(act)); } catch {}
+    logStream.end();
+  });
+  return child;
 }
 
 function loadState() {
@@ -300,9 +337,7 @@ async function startUpdate({ product, idea, chatId }) {
   const dest = path.join(ROOT, 'products', product);
   if (!fs.existsSync(dest)) throw new Error(`product "${product}" is not on this machine`);
   const prompt = UPDATE_TEMPLATE.replace('{{PRODUCT}}', product).replace('{{REQUEST}}', idea);
-  const logFile = fs.openSync(path.join(LOG_DIR, `${product}-update.log`), 'a');
-  const child = spawn(CONFIG.claudeBin, ['-p', prompt, '--permission-mode', CONFIG.permissionMode, ...CONFIG.extraClaudeArgs],
-    { cwd: dest, stdio: ['ignore', logFile, logFile] });
+  const child = spawnAgent(dest, prompt, `${product}-update`);
   running.set(product, { child, chatId });
   saveState();
   refreshDashboard();
@@ -340,10 +375,7 @@ async function startBuild({ idea, chatId, name }) {
 
   // 3. Launch the headless build.
   const prompt = PROMPT_TEMPLATE.replace('{{IDEA}}', idea);
-  const logFile = fs.openSync(path.join(LOG_DIR, `${slug}.log`), 'a');
-  const child = spawn(CONFIG.claudeBin,
-    ['-p', prompt, '--permission-mode', CONFIG.permissionMode, ...CONFIG.extraClaudeArgs],
-    { cwd: dest, stdio: ['ignore', logFile, logFile], detached: false });
+  const child = spawnAgent(dest, prompt, slug);
 
   const entry = { child, chatId, lastPhaseSig: '' };
   entry.watcher = setInterval(() => checkProgress(slug, dest, entry), CONFIG.statusPollSeconds * 1000);
@@ -460,9 +492,7 @@ function maybeSpawnIncident(name, entry) {
     .replace('{{PRODUCT}}', name)
     .replace('{{URL}}', entry.url)
     .replace('{{OBSERVED}}', entry.error || `HTTP ${entry.httpStatus}, ${entry.fails} consecutive failures`);
-  const logFile = fs.openSync(path.join(LOG_DIR, `${name}-incident.log`), 'a');
-  const child = spawn(CONFIG.claudeBin, ['-p', prompt, '--permission-mode', CONFIG.permissionMode, ...CONFIG.extraClaudeArgs],
-    { cwd: dest, stdio: ['ignore', logFile, logFile] });
+  const child = spawnAgent(dest, prompt, `${name}-incident`);
   log(`incident agent dispatched: ${name}`);
   for (const chatId of CONFIG.allowedChatIds) send(chatId, `🚑 ${name} is having trouble — I'm on it. I'll fix it and report back; no action needed from you.`);
   child.on('exit', async (code) => {

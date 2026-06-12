@@ -27,6 +27,7 @@ fi
   echo 'CLAUDE.md'
   echo '.planning/'
   echo '.turbo/'
+  echo '.factory-activity.json'
 } >> "$DEST/.git/info/exclude"
 
 echo "Adopted: $DEST (customer repo, factory kit overlaid locally — never committed)"

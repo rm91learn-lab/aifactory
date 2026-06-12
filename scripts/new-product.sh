@@ -27,7 +27,7 @@ fi
 mkdir -p "$DEST"
 cp -R "$FACTORY_DIR/.claude" "$DEST/.claude"
 sed "s/<PRODUCT NAME>/$NAME/" "$FACTORY_DIR/docs/templates/PRODUCT-CLAUDE.md" > "$DEST/CLAUDE.md"
-printf '.turbo/\nnode_modules/\n.DS_Store\n' > "$DEST/.gitignore"
+printf '.turbo/\nnode_modules/\n.DS_Store\n.factory-activity.json\n' > "$DEST/.gitignore"
 git -C "$DEST" init -q
 git -C "$DEST" add -A
 git -C "$DEST" commit -qm "factory: scaffold product workspace"

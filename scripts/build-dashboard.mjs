@@ -101,6 +101,10 @@ export function collectProducts(root = ROOT) {
       commits: Number(git(dir, 'rev-list', '--count', 'HEAD')) || 0,
       stage: !hasPlanning ? 'scaffolded' : pct >= 100 ? 'ready' : phases.length ? 'in progress' : 'planning',
       health: h ? { up: h.up, ms: h.ms, url: h.url, downSince: h.downSince } : null,
+      activity: (() => {
+        const a = readJson(path.join(dir, '.factory-activity.json'));
+        return a ? { updatedAt: a.updatedAt, counts: a.counts, entries: (a.entries || []).slice(-12) } : null;
+      })(),
     };
   });
 }
@@ -112,7 +116,8 @@ export function statusText(root = ROOT) {
     const bar = '▰'.repeat(Math.round(p.pct / 10)) + '▱'.repeat(10 - Math.round(p.pct / 10));
     const flag = (p.building ? ' 🔨 building' : '') + (p.health ? (p.health.up ? ' 🟢' : ' 🔴 DOWN') : '');
     const demo = (p.health?.up && p.health.url) ? `\n🔗 ${p.health.url}` : p.deployUrl ? `\n🔗 ${p.deployUrl}` : '';
-    return `${p.name}${flag}\n${bar} ${p.pct}% · ${p.stage}${p.version ? ' · v' + p.version : ''}\n${p.stateLine || p.lastCommit || 'no activity yet'}${demo}`;
+    const now = p.building && p.activity?.entries?.length ? `\nnow: ${p.activity.entries[p.activity.entries.length - 1].s}` : '';
+    return `${p.name}${flag}\n${bar} ${p.pct}% · ${p.stage}${p.version ? ' · v' + p.version : ''}\n${p.stateLine || p.lastCommit || 'no activity yet'}${now}${demo}`;
   }).join('\n\n');
 }
 
@@ -157,6 +162,12 @@ function html(products) {
   .links a{background:var(--bar);border:1px solid var(--border);color:var(--blue);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:7px}
   .links a.demo{color:var(--accent)}
   .stats{font-size:12px;color:var(--dim);border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+  .now{font-size:13px;color:var(--build);margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .feed{margin:10px 0 0;font-size:12px;border-top:1px solid var(--border);padding-top:8px}
+  .feed-title{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin-bottom:6px}
+  .feed div{color:var(--dim);padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .feed div:last-child{color:var(--text)}
+  .feed .ago{color:var(--dim);opacity:.7;font-size:11px;margin-left:4px}
   .empty{color:var(--dim);text-align:center;padding:80px 0}
   .hint{font-size:11px;color:var(--dim);margin-top:8px}
 </style></head><body>
@@ -216,7 +227,24 @@ function card(p) {
   if (p.stateLine) metaBits.push(p.stateLine);
   c.appendChild(el('div', 'meta', metaBits.join(' · ')));
 
+  if (p.building && p.activity && p.activity.entries.length) {
+    var lastE = p.activity.entries[p.activity.entries.length - 1];
+    c.appendChild(el('div', 'now', 'now: ' + lastE.s));
+  }
+
   var d = el('div', 'details');
+  if (p.activity && p.activity.entries.length) {
+    var feed = el('div', 'feed');
+    feed.appendChild(el('div', 'feed-title', '⚡ live activity — ' + p.activity.counts.actions + ' actions · ' + p.activity.counts.writes + ' files written'));
+    p.activity.entries.slice(-8).forEach(function (en) {
+      var row = el('div', null, en.s);
+      var secs = Math.max(0, Math.round((Date.now() - new Date(en.t).getTime()) / 1000));
+      var ago = el('span', 'ago', secs < 90 ? secs + 's ago' : Math.round(secs / 60) + 'm ago');
+      row.appendChild(ago);
+      feed.appendChild(row);
+    });
+    d.appendChild(feed);
+  }
   if (p.idea) d.appendChild(el('div', 'idea', p.idea));
   if (p.phases.length) {
     var ul = el('ul', 'stages');
