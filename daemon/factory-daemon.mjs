@@ -102,6 +102,11 @@ async function tg(method, params) {
 }
 const send = (chatId, text) => tg('sendMessage', { chat_id: chatId, text: String(text).slice(0, 4000) });
 
+function dashboardLink() {
+  const cloud = CONFIG.cloudDashboard;
+  return cloud?.enabled && cloud.url ? cloud.url : `http://localhost:${CONFIG.dashboardPort || 7717}`;
+}
+
 function slugify(idea) {
   let base = idea.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim()
     .split(/\s+/).slice(0, 4).join('-').slice(0, 32).replace(/^-+|-+$/g, '') || 'product';
@@ -133,13 +138,15 @@ async function handleMessage(msg) {
   }
 
   if (text === '/start') {
-    await send(chatId, `AI-Factory online. Chat id ${chatId} is authorized.\n\nSend any message describing a product idea — I'll always confirm before starting anything.\nDashboard (on the factory Mac): http://localhost:${CONFIG.dashboardPort || 7717}\n\n/status — progress of all products\n/health — live health of deployed products\n/cancel — stop everything\n/help — commands`);
+    await send(chatId, `AI-Factory online. Chat id ${chatId} is authorized.\n\nSend any message describing a product idea — I'll always confirm before starting anything.\n\n📊 Live dashboard: ${dashboardLink()}\n(login: factory — tip: pin this message)\n\n/status — progress of all products\n/health — live health of deployed products\n/dashboard — dashboard link\n/cancel — stop everything\n/help — commands`);
+  } else if (text === '/dashboard') {
+    await send(chatId, `📊 ${dashboardLink()}\nLogin: factory + your dashboard password.\nUpdates live while builds run — pin this message for one-tap access.`);
   } else if (text === '/status') {
     await send(chatId, statusText(ROOT));
   } else if (text === '/health') {
     await send(chatId, healthText(ROOT));
   } else if (text === '/help') {
-    await send(chatId, 'Just text me in plain words — I always ask before starting anything.\n\n• New product idea → I build it and send you the link.\n• Problem or change ("the payment button is broken") → tap which product, I fix it.\n• Voice notes aren\'t supported yet — please type.\n\n/status — how every product is going\n/health — are the live products up\n/cancel — stop everything queued or running\n/start — show chat id');
+    await send(chatId, 'Just text me in plain words — I always ask before starting anything.\n\n• New product idea → I build it and send you the link.\n• Problem or change ("the payment button is broken") → tap which product, I fix it.\n• Voice notes aren\'t supported yet — please type.\n\n/status — how every product is going\n/health — are the live products up\n/dashboard — live dashboard link\n/cancel — stop everything queued or running\n/start — show chat id');
   } else if (text === '/cancel') {
     const queued = state.queue.length;
     state.queue = [];
@@ -238,7 +245,7 @@ async function enqueue(job) {
   const verb = job.type === 'update' ? `change to "${job.product}"` : 'new product build';
   await send(job.chatId, (running.size >= CONFIG.concurrency
     ? `Queued: ${verb} (${state.queue.length} in line). I'll start as soon as a slot frees up.`
-    : `On it — starting the ${verb} now.`) + '\nSend /cancel anytime to stop everything.');
+    : `On it — starting the ${verb} now.`) + `\nWatch live: ${dashboardLink()}\nSend /cancel anytime to stop everything.`);
   pump();
 }
 
