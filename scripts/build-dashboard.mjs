@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 4; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 5; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -35,6 +35,12 @@ function parseRoadmapSections(text) {
     const h = line.match(/^#{2,4}\s*phase\s*(\d+)[:.\-\s]*(.*)/i);
     if (h) {
       cur = { n: +h[1], name: (h[2] || '').replace(/[*_`]/g, '').trim() || `Phase ${h[1]}`, tasks: [] };
+      sections.push(cur);
+      continue;
+    }
+    const ch = line.match(/^#{2,4}\s*change\b[:\s-]*(.*)/i);
+    if (ch) {
+      cur = { change: true, name: ('🔧 ' + ((ch[1] || '').replace(/[*_`]/g, '').trim() || 'Change')).trim(), tasks: [] };
       sections.push(cur);
       continue;
     }
@@ -67,6 +73,10 @@ function buildBoard(planningDir, roadmapText) {
   const seen = new Set();
   const board = [];
   for (const s of sections) {
+    if (s.change) {
+      board.push({ name: s.name, status: s.tasks.length && s.tasks.every(t => t.done) ? 'done' : 'dev', tasks: s.tasks, change: true });
+      continue;
+    }
     const dn = dirs[s.n];
     if (dn) seen.add(dn);
     board.push({ name: s.name, status: dn ? dirStatus(dn) : 'backlog', tasks: s.tasks });
@@ -209,6 +219,7 @@ function html(products) {
   .ph{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;font-size:13px}
   .ph.dev{border-color:var(--build)}
   .ph.done{opacity:.75}
+  .ph.change{border-color:var(--build);background:rgba(210,153,34,.07)}
   .ph .tprog{font-size:11px;color:var(--dim);margin-top:4px}
   .ph ul{list-style:none;margin-top:6px;font-size:12px}
   .ph li{color:var(--dim);padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -344,14 +355,23 @@ function renderProduct(view, p) {
       ? p.tasks.filter(function (t) { return (t.status || 'pending') === key; }).map(function (t) { return { name: t.s, status: key, tasks: [] }; })
       : p.board.filter(function (ph) { return ph.status === key; });
   };
+  // Live change-work: while an update runs on a product that already has phases,
+  // the agent's current tasks appear as 🔧 cards in the matching columns.
+  var changeMap = { pending: 'backlog', in_progress: 'dev', completed: 'done' };
+  var liveChange = (!useTasks && p.building && p.tasks && p.tasks.length) ? p.tasks : [];
+
   var board = el('div', 'board');
   if (useTasks) board.style.gridTemplateColumns = 'repeat(3,1fr)';
   cols.forEach(function (col) {
     var c = el('div', 'col');
     var items = items_of(col[0]);
+    var changeItems = liveChange.filter(function (t) { return changeMap[t.status || 'pending'] === col[0]; });
     var h3 = el('h3', null, col[1] + ' ');
-    h3.appendChild(el('span', 'n', String(items.length)));
+    h3.appendChild(el('span', 'n', String(items.length + changeItems.length)));
     c.appendChild(h3);
+    changeItems.forEach(function (t) {
+      c.appendChild(el('div', 'ph change', '🔧 ' + t.s));
+    });
     items.forEach(function (ph) {
       var card = el('div', 'ph ' + ph.status, ph.name);
       if (ph.tasks.length) {

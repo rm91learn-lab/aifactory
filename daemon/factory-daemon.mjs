@@ -87,6 +87,7 @@ function spawnAgent(dest, prompt, logName) {
   const actFile = path.join(dest, '.factory-activity.json');
   let act = { updatedAt: null, counts: { actions: 0, writes: 0, commands: 0 }, entries: [], tasks: [] };
   try { act = { ...act, ...JSON.parse(fs.readFileSync(actFile, 'utf8')) }; } catch {}
+  act.tasks = []; // each run gets a fresh task list; history lives in the feed
   let dirty = false;
   const parser = makeLineParser((entry) => {
     act.counts.actions++;

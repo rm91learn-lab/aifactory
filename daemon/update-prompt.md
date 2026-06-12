@@ -12,7 +12,7 @@ Work in this order:
 
 3. **Implement with full discipline.** Make the change, keep the full test suite green, polish (`finalize`-grade quality), and apply `verification-before-completion` — verify by actually running the thing, not by assuming.
 
-4. **Ship it.** Commit with a clear message, push to origin. If `DEPLOY.json` exists, deploy, verify the health URL, and watch it briefly before declaring success. If there is no deployment yet, say so in the summary.
+4. **Ship it.** Commit with a clear message, push to origin. If `DEPLOY.json` exists, deploy, verify the health URL, and watch it briefly before declaring success. If there is no deployment yet, say so in the summary. Also log the change permanently: append a `## Change: <short title>` section with task checkboxes to `.planning/ROADMAP.md` (create the file if missing) and check them off as completed — the founder's board is generated from that file.
 
 5. **Report for the founder.** Write `UPDATE-SUMMARY.txt` (overwrite) and commit it: 2–4 sentences in plain language. What changed in user-visible terms, whether it is live right now, and one thing they could try to see it. No jargon whatsoever.
 
