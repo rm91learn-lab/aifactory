@@ -47,7 +47,7 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 ```
 .claude/commands/gsd/   69 GSD commands        .claude/agents/        33 GSD agents
 .claude/gsd-core/       GSD workflows/refs/templates (rewritten to project-local paths)
-.claude/skills/         77 skills: superpowers (9) + turbo (50) + gstack (13) + custom (5)
+.claude/skills/         87 skills: superpowers (9) + turbo (50) + gstack (13) + QA pack (10) + custom (5)
 products/               product workspaces (gitignored; each its own git repo on GitHub)
 docs/SOURCES.md         provenance of every import, and what was rejected and why
 scripts/new-product.sh  scaffold a product workspace; --github creates + pushes the repo

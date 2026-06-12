@@ -32,6 +32,19 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 - **Modified:** cross-skill references (`~/.claude/skills/gstack/<skill>/...`) rewritten to project-local `.claude/skills/<skill>/...`; `SKILL.md.tmpl` template sources removed. Preamble calls to `~/.claude/skills/gstack/bin/*` left intact ON PURPOSE — every call carries `|| true`/default fallbacks, so skills get full telemetry/config/learnings features on machines with a global gstack install and degrade silently elsewhere. Same for the optional browse daemon (`design-review`).
 - **Excluded (~45):** ship, land-and-deploy, setup-deploy, canary, benchmark (overlap with turbo ship + custom deploy/release/post-deploy-monitor; heavily coupled to the browse daemon), qa/qa-only/devex-review/design-shotgun/scrape/browse/skillify (browse-daemon-centric; turbo smoke-test/exploratory-test cover the portable cases), investigate/spec/learn (covered by superpowers systematic-debugging + turbo investigate, /gsd:spec-phase, turbo self-improve), codex (hard Codex CLI dependency; turbo's codex skills already imported), freeze/unfreeze/careful/guard/context-save/context-restore/plan-tune (session utilities, not factory pipeline), ios-* (platform-specific), gbrain/supabase/extension/pair-agent/connect-chrome infra (runtime, not skills), retro/office admin variants, make-pdf, landing-report, gstack-upgrade.
 
+### fugazi/test-automation-skills-agents — QA playbook layer
+- **Imported 2026-06-12** · https://github.com/fugazi/test-automation-skills-agents
+- **Why:** consistent expert-grade, fully self-contained QA playbooks that arm the factory's independent QA gate: Playwright E2E patterns (locators, auto-waiting, flakiness), webapp testing, regression testing, Playwright CLI, axe/WCAG accessibility, API testing, ISTQB test planning.
+- **Imported (7):** playwright-e2e-testing, webapp-playwright-testing, playwright-cli, playwright-regression-testing, a11y-playwright-testing, api-testing, qa-test-planner → `.claude/skills/` (with their `references/` bundles).
+- **Excluded:** webapp-selenium-testing, accessibility-selenium-testing (Selenium/Java — not our toolchain), qa-manual-istqb (manual-QA persona; factory QA is automated).
+
+### PramodDutta/qaskills — cherry-picked deep references
+- **Imported 2026-06-12** · https://github.com/PramodDutta/qaskills (the qaskills.sh monorepo)
+- **Why/what:** 380-skill encyclopedia of very mixed quality (many SEO-template stubs; some 1000+ line expert references). Quality-gated to three genuinely deep skills: **api-contract-validator** (OpenAPI/JSON-Schema/GraphQL contract + backward-compat testing), **api-test-suite-generator** (CRUD/auth/pagination/error suites), **state-machine-test-generator** (FSM-driven test cases).
+- **Modified:** frontmatter names normalized to slugs.
+- **Excluded (~377):** template stubs (e.g. integration-testing-patterns, cron-job-testing, lighthouse-performance contain literal "Adapt this pattern" placeholders), framework-specific packs outside our stack, and everything coupled to the qaskills CLI/site.
+- **qaskills.sh blog (top-10 QA skills):** editorial + distribution funnel for their CLI — reference only.
+
 ### Custom DevOps skills (authored here)
 `fix-ci`, `deploy`, `release`, `post-deploy-monitor` — close the CI/CD → deploy → release → operate gap that none of the imports cover (superpowers stops at git, turbo at the PR, GSD at verification).
 
