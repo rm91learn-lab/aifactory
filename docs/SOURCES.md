@@ -70,3 +70,7 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
   - **datadog-labs/** (8 skills) — APM, log search, LLM trace root-cause
   - **NeoLabHQ/context-engineering-kit** — spec/domain/subagent-driven dev patterns
   - **muratcankoylan/Agent-Skills-for-Context-Engineering** — multi-agent orchestration patterns
+
+### karanb192/awesome-claude-skills — rejected (stale catalog, no unique content)
+- **Evaluated 2026-06-12** · last commit 2025-10-21 (8 months stale) · README-only list of 54 links.
+- Verified entries all point to sources already imported (obra/superpowers, anthropics/skills, webapp-testing). Every gap-relevant entry (visual regression, performance profiling, load testing, security review, dependency audit) is marked "Community-needed" — i.e. the skill does not exist. VoltAgent/awesome-agent-skills (actively maintained) remains our reference catalog.
