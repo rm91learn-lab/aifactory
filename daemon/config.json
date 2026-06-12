@@ -10,6 +10,7 @@
   "claudeBin": "claude",
   "extraClaudeArgs": [],
   "pushDashboard": false,
+  "dashboardPort": 7717,
   "monitor": {
     "intervalSeconds": 300,
     "failThreshold": 3,

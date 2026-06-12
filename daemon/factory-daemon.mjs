@@ -11,6 +11,7 @@
 // Any other text message is treated as a product idea.
 
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -132,7 +133,7 @@ async function handleMessage(msg) {
   }
 
   if (text === '/start') {
-    await send(chatId, `AI-Factory online. Chat id ${chatId} is authorized.\n\nSend any message describing a product idea and I'll build it.\n/status — progress of all products\n/health — live health of deployed products\n/help — commands`);
+    await send(chatId, `AI-Factory online. Chat id ${chatId} is authorized.\n\nSend any message describing a product idea — I'll always confirm before starting anything.\nDashboard (on the factory Mac): http://localhost:${CONFIG.dashboardPort || 7717}\n\n/status — progress of all products\n/health — live health of deployed products\n/cancel — stop everything\n/help — commands`);
   } else if (text === '/status') {
     await send(chatId, statusText(ROOT));
   } else if (text === '/health') {
@@ -158,29 +159,67 @@ async function handleMessage(msg) {
   }
 }
 
+const preview = (s) => (s.length > 90 ? s.slice(0, 90) + '…' : s);
+
+// Two deliberate taps before anything is created:
+//   stage 'route'   — what is this? (new product / which product / ignore)
+//   stage 'confirm' — final summary, explicit ✅ Yes / ❌ Cancel
 async function routeIdea(chatId, text) {
   const products = listProducts();
   const pending = pendingIdeas.get(chatId);
-  if (pending) {
+
+  if (pending?.stage === 'confirm') {
     pendingIdeas.delete(chatId);
-    if (/ignore/i.test(text) || text.startsWith('❌')) {
-      await send(chatId, 'Okay, ignored. Nothing was started.');
-    } else if (/new product/i.test(text) || text.startsWith('🆕')) {
-      await enqueue({ type: 'build', idea: pending, chatId });
+    if (text.startsWith('✅') || /^yes/i.test(text)) {
+      await enqueue(pending.action);
+    } else if (text.startsWith('❌') || /^(no|cancel)/i.test(text)) {
+      await send(chatId, 'Cancelled. Nothing was started.');
     } else {
-      const pick = text.trim().toLowerCase();
-      const target = products.find(p => p.toLowerCase() === pick) || products.find(p => pick.includes(p.toLowerCase()));
-      if (target) await enqueue({ type: 'update', product: target, idea: pending, chatId });
-      else await send(chatId, `I don't recognize "${text.trim()}", so nothing was started. Send the request again to retry.`);
+      await send(chatId, 'That wasn\'t a ✅, so I cancelled the previous request. Now, about your new message:');
+      await routeIdea(chatId, text);
     }
     return;
   }
-  // Never create anything from a bare message — always confirm first.
-  pendingIdeas.set(chatId, text);
-  const preview = text.length > 90 ? text.slice(0, 90) + '…' : text;
+
+  if (pending?.stage === 'route') {
+    pendingIdeas.delete(chatId);
+    if (/ignore/i.test(text) || text.startsWith('❌')) {
+      await send(chatId, 'Okay, ignored. Nothing was started.');
+      return;
+    }
+    let action = null;
+    if (/new product/i.test(text) || text.startsWith('🆕')) {
+      action = { type: 'build', idea: pending.idea, chatId };
+    } else {
+      const pick = text.trim().toLowerCase();
+      const target = products.find(p => p.toLowerCase() === pick) || products.find(p => pick.includes(p.toLowerCase()));
+      if (target) action = { type: 'update', product: target, idea: pending.idea, chatId };
+    }
+    if (!action) {
+      await send(chatId, `I don't recognize "${text.trim()}", so nothing was started. Send the request again to retry.`);
+      return;
+    }
+    pendingIdeas.set(chatId, { stage: 'confirm', idea: pending.idea, action });
+    const what = action.type === 'build'
+      ? `build a NEW product from:\n"${preview(pending.idea)}"\n\nThat means: a new private repo, an autonomous build, and a live demo link when done.`
+      : `change "${action.product}" based on:\n"${preview(pending.idea)}"`;
+    await tg('sendMessage', {
+      chat_id: chatId,
+      text: `Final check — I'm about to ${what}\n\nGo ahead?`,
+      reply_markup: {
+        keyboard: [[{ text: '✅ Yes, start' }], [{ text: '❌ Cancel' }]],
+        one_time_keyboard: true,
+        resize_keyboard: true,
+      },
+    });
+    return;
+  }
+
+  // Fresh message — never create anything without the two confirmations above.
+  pendingIdeas.set(chatId, { stage: 'route', idea: text });
   await tg('sendMessage', {
     chat_id: chatId,
-    text: `Before I start anything — what should I do with this?\n\n"${preview}"`,
+    text: `Before I start anything — what should I do with this?\n\n"${preview(text)}"`,
     reply_markup: {
       keyboard: [
         [{ text: '🆕 Build this as a new product' }],
@@ -197,9 +236,9 @@ async function enqueue(job) {
   state.queue.push(job);
   saveState();
   const verb = job.type === 'update' ? `change to "${job.product}"` : 'new product build';
-  await send(job.chatId, running.size >= CONFIG.concurrency
+  await send(job.chatId, (running.size >= CONFIG.concurrency
     ? `Queued: ${verb} (${state.queue.length} in line). I'll start as soon as a slot frees up.`
-    : `On it — starting the ${verb} now.`);
+    : `On it — starting the ${verb} now.`) + '\nSend /cancel anytime to stop everything.');
   pump();
 }
 
@@ -374,6 +413,31 @@ function maybeSpawnIncident(name, entry) {
     }
   });
 }
+
+// --- live dashboard server (localhost only) ----------------------------------
+let lastGen = 0;
+function freshDashboard() {
+  if (Date.now() - lastGen > 3000) { buildDashboard(ROOT); lastGen = Date.now(); }
+}
+const DASH_PORT = CONFIG.dashboardPort || 7717;
+http.createServer((req, res) => {
+  try {
+    const url = (req.url || '/').split('?')[0];
+    if (url === '/' || url === '/index.html') {
+      freshDashboard();
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(fs.readFileSync(path.join(ROOT, 'dashboard', 'index.html')));
+    } else if (url === '/data.json') {
+      freshDashboard();
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(fs.readFileSync(path.join(ROOT, 'dashboard', 'data.json')));
+    } else {
+      res.writeHead(404); res.end('not found');
+    }
+  } catch (err) {
+    res.writeHead(500); res.end(String(err.message));
+  }
+}).listen(DASH_PORT, '127.0.0.1', () => log(`dashboard live at http://localhost:${DASH_PORT}`));
 
 // --- main long-poll loop -----------------------------------------------------
 log(`factory daemon up — owner=${CONFIG.githubOwner}, concurrency=${CONFIG.concurrency}, allowed chats: ${CONFIG.allowedChatIds.join(', ') || '(none yet — send /start to your bot to get your chat id)'}`);
