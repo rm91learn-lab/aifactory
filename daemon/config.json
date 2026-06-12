@@ -11,7 +11,7 @@
   "extraClaudeArgs": [],
   "pushDashboard": false,
   "dashboardPort": 7717,
-  "cloudDashboard": { "enabled": false, "url": "" },
+  "cloudDashboard": { "enabled": true, "url": "https://aifactory-dashboard.rm91-learn.workers.dev" },
   "monitor": {
     "intervalSeconds": 300,
     "failThreshold": 3,

@@ -458,6 +458,12 @@ http.createServer((req, res) => {
   } catch (err) {
     res.writeHead(500); res.end(String(err.message));
   }
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Another factory daemon is already running (port ${DASH_PORT} busy). Exiting — only one factory at a time.`);
+    process.exit(1);
+  }
+  log('dashboard server error:', err.message);
 }).listen(DASH_PORT, '127.0.0.1', () => log(`dashboard live at http://localhost:${DASH_PORT}`));
 
 // --- main long-poll loop -----------------------------------------------------
