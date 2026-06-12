@@ -6,11 +6,25 @@ This is the verbatim change request to send to factory-console once it's cut ove
 
 Add two things to factory-console, on top of what exists. Do not break the data contract, the push/inbox auth, or the existing dashboard grid.
 
-## 1. Per-stage product page (8 stages)
+## 0. DECOMMISSION the kanban board
 
-When a product card is clicked, the product page shows the product's position across the 8 AI-driven development stages and tailors the detail to the ACTIVE stage. Stages: 1 Capture · 2 Plan · 3 Design · 4 Build · 5 QA · 6 Release · 7 Operate · 8 Evolve.
+Remove the column/card kanban from the product page entirely. It reads as a generic task tracker and does not convey a live autonomous factory. Replace it with the live build view (section 1). Keep the audit data (phases, tasks) available, but the PRIMARY product view is the living pipeline, not columns.
 
-- A stage rail at the top: each stage a pill — completed = check, current = accented, future = muted. Derive the current stage from the snapshot: building+phases→Build; a QA-* verdict present and building→QA; DEPLOY-STAGED present awaiting promote→Release; deployed+healthy, not building→Operate; has shipped changes→Evolve; pre-build states map to Capture/Plan/Design from .planning artifacts.
+## 1. Live build view — the primary product page (mind-blowing, near-real-time)
+
+The hero of the console. When a product card is clicked, the page must feel like watching a machine build software in real time — motion, streaming, live numbers — distinctive enough to win a customer demo. It is a rendering of data the factory already emits (activity feed, counters, stage, agents) — no new backend plumbing required.
+
+Required elements:
+- **Living pipeline rail** of the 8 AI-driven stages (1 Capture · 2 Plan · 3 Design · 4 Build · 5 QA · 6 Release · 7 Operate · 8 Evolve): completed nodes filled/checked, the active node pulsing, a progress line that fills toward the active stage, a moving indicator. Derive the current stage from the snapshot: building+phases→Build; QA verdict present + building→QA; DEPLOY-STAGED awaiting promote→Release; deployed+healthy, not building→Operate; has shipped changes→Evolve; pre-build→Capture/Plan/Design from .planning.
+- **Live counters** that animate (count up) when values change: tests passing, files written, tasks done/total, agents active. Round all numbers.
+- **Agents at work** row: a chip per active agent with what it's doing right now (from the activity stream's latest per-agent action), with a subtle "working" pulse.
+- **Streaming activity log**: newest-first, auto-appends as new activity arrives, timestamps, agent name accented, capped to a readable window with a gentle fade-in. This is the mesmerizing centrepiece — it must visibly move while a build runs.
+- **Footer**: staged-preview-under-QA note, open-demo button, and the "ask for a change" entry to the chat panel (section 2).
+- Motion is required but tasteful: pulse, flow, count-up, stream — NO neon/glow gimmicks. The product has its own dark theme; make it premium, not noisy. Mobile-first: the pipeline scrolls horizontally; the stream stacks.
+- When NOT building (idle/operate), the same view settles: pipeline rests on the current stage, counters static, the stream shows recent history, health is prominent. It must look intentional at rest, not "dead".
+
+### Per-stage detail (below the live view)
+Tailor a detail section to the ACTIVE stage (fall back gracefully when a field is absent):
 - Beneath the rail, render the view for the active stage (fall back gracefully when a field is absent):
   - Capture: the original brief, chosen name, confirmation.
   - Plan: the requirements checklist (what's planned), the assumptions list (decisions made for you), the roadmap phases.
