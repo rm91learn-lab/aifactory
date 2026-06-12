@@ -140,6 +140,8 @@ export function collectProducts(root = ROOT) {
       stage: !hasPlanning ? 'scaffolded' : pct >= 100 ? 'ready' : board.length ? 'in progress' : 'planning',
       health: h ? { up: h.up, ms: h.ms, url: h.url, downSince: h.downSince } : null,
       activity: a ? { updatedAt: a.updatedAt, counts: a.counts, entries: (a.entries || []).slice(-15) } : null,
+      requirements: read(path.join(planning, 'REQUIREMENTS.md')).trim().slice(0, 6000),
+      assumptions: read(path.join(planning, 'ASSUMPTIONS.md')).replace(/^# .*\n+/,'').replace(/^Each entry.*\n+/m,'').trim().slice(0, 4000),
     };
   });
 }
@@ -157,7 +159,8 @@ export function statusText(root = ROOT) {
 }
 
 function html(products) {
-  const data = JSON.stringify({ generated: new Date().toISOString(), products }).replace(/</g, '\\u003c');
+  const botUsername = readJson(path.join(ROOT, 'daemon', 'config.json'))?.botUsername || '';
+  const data = JSON.stringify({ generated: new Date().toISOString(), botUsername, products }).replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -215,7 +218,9 @@ function html(products) {
   .feed div:first-child{color:var(--text)}
   .feed .ago{opacity:.6;font-size:11px;margin-left:5px}
   .idea-full{color:var(--dim);font-size:13px;white-space:pre-wrap}
+  .doc{color:var(--dim);font-size:13px;white-space:pre-wrap;max-height:340px;overflow-y:auto}
   .stats-line{margin-top:14px;font-size:12px;color:var(--dim)}
+  .cta{background:var(--bar);border:1px solid var(--build);color:var(--build);text-decoration:none;font-size:13px;padding:6px 14px;border-radius:8px}
 </style></head><body>
 <header><h1 onclick="location.hash=''">AI-Factory</h1><span id="upd"></span></header>
 <div class="bar-row" id="chips">
@@ -317,6 +322,10 @@ function renderProduct(view, p) {
   var demoUrl = (p.health && p.health.url) || p.deployUrl;
   if (demoUrl) links.appendChild(link(demoUrl, '▶ open demo', 'demo'));
   if (p.repoUrl) links.appendChild(link(p.repoUrl, 'code repository'));
+  if (DATA.botUsername) {
+    var cta = link('https://t.me/' + DATA.botUsername + '?text=' + encodeURIComponent('Add to ' + p.name + ': '), '➕ request a feature or change', 'cta');
+    links.appendChild(cta);
+  }
   view.appendChild(links);
 
   var board = el('div', 'board');
@@ -371,6 +380,18 @@ function renderProduct(view, p) {
   ideaPanel.appendChild(el('div', 'stats-line', (p.lastCommit ? p.lastCommit + ' · ' : '') + p.commits + ' updates'));
   two.appendChild(ideaPanel);
   view.appendChild(two);
+
+  var two2 = el('div', 'two');
+  two2.style.marginTop = '16px';
+  var reqPanel = el('div', 'panel');
+  reqPanel.appendChild(el('h4', null, "🧭 what's planned (full scope)"));
+  reqPanel.appendChild(el('div', 'doc', p.requirements || (p.building ? 'The plan document is being written — check back shortly.' : 'No plan document found.')));
+  two2.appendChild(reqPanel);
+  var asPanel = el('div', 'panel');
+  asPanel.appendChild(el('h4', null, '🤔 decisions made for you'));
+  asPanel.appendChild(el('div', 'doc', p.assumptions || 'No autonomous decisions recorded yet.'));
+  two2.appendChild(asPanel);
+  view.appendChild(two2);
 }
 function render() {
   var view = document.getElementById('view');

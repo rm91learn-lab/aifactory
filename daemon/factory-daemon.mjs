@@ -313,9 +313,12 @@ async function enqueue(job) {
   state.queue.push(job);
   saveState();
   const verb = job.type === 'update' ? `change to "${job.product}"` : 'new product build';
-  await send(job.chatId, (running.size >= CONFIG.concurrency
-    ? `Queued: ${verb} (${state.queue.length} in line). I'll start as soon as a slot frees up.`
-    : `On it — starting the ${verb} now.`) + `\nWatch live: ${dashboardLink()}\nSend /cancel anytime to stop everything.`);
+  const busy = job.type === 'update' && running.has(job.product);
+  await send(job.chatId, (busy
+    ? `"${job.product}" is being worked on right now — I'll apply this change the moment it finishes.`
+    : running.size >= CONFIG.concurrency
+      ? `Queued: ${verb} (${state.queue.length} in line). I'll start as soon as a slot frees up.`
+      : `On it — starting the ${verb} now.`) + `\nWatch live: ${dashboardLink()}\nSend /cancel anytime to stop everything.`);
   pump();
 }
 
