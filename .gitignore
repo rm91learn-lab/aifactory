@@ -2,6 +2,7 @@ products/
 _research/
 daemon/logs/
 daemon/state.json
+daemon/.env
 archives/
 .turbo/
 node_modules/
