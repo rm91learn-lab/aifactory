@@ -12,7 +12,7 @@
     "intervalSeconds": 300,
     "failThreshold": 3,
     "timeoutMs": 10000,
-    "autoIncident": false,
+    "autoIncident": true,
     "incidentCooldownMinutes": 60
   }
 }

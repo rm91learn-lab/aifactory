@@ -32,6 +32,17 @@ Rejected: get-shit-done (archived — gsd-core is its successor), pulumi/agent-s
 
 Fully hands-off: `/gsd:autonomous` runs every remaining phase end to end.
 
+## Running it as a non-coder
+
+You never need to touch code, git, or any of the terms below. Your entire interface is the Telegram bot and the dashboard:
+
+- **Text an idea** → the factory asks "new product, or a change to an existing one?" with tap buttons → it builds, creates the repository, and messages you a plain-language summary plus a link when done.
+- **Text a problem** ("the payment button doesn't work on yoga-booking") → tap the product name → the factory finds the cause, fixes it properly, tests it, ships it, and tells you in plain words what changed.
+- **Things break on their own?** The watchdog notices within minutes, an agent fixes it autonomously, and you get "what broke / what I did / it's back up" — jargon-free. You're only ever asked to act when it's something a human must do (e.g. a payment or account issue), and then it's one concrete instruction.
+- **`/status`** any time → progress bars for every product. **`/health`** → is everything live. The **dashboard** shows the same in a browser.
+
+Every product also carries a `FINAL-REPORT.md` whose first section is written for you, not for engineers.
+
 ## Quickstart
 
 ```bash
@@ -74,7 +85,7 @@ Then any plain message to the bot is treated as a product idea: workspace → re
 Two layers, deliberately: **cheap sensors, smart responder**. No always-on AI agent per product — that would burn tokens doing what an HTTP check does for free.
 
 1. **Watchdog (free, continuous):** the daemon checks every product that has a `DEPLOY.json` (written automatically by the `deploy` skill) every 5 minutes — status, latency. After 3 consecutive failures you get one 🔴 Telegram alert (and one 🟢 on recovery); health badges appear on the dashboard. `/health` in chat shows live status. Standalone pass without the daemon: `node scripts/monitor.mjs` (cron-able).
-2. **Incident agent (on-demand, only when something breaks):** with `monitor.autoIncident: true` in daemon/config.json, a down transition dispatches a headless `claude` agent into that product with [daemon/incident-prompt.md](daemon/incident-prompt.md): diagnose with evidence, roll back only if the failure is deploy-correlated and the platform supports it, write `INCIDENT-*.md` to the repo — never code fixes (those go through the normal pipeline). One dispatch per `incidentCooldownMinutes` to prevent spawn loops. Default off: alerts-only until you've watched it work.
+2. **Incident agent (on-demand, fixes autonomously):** a down transition dispatches a headless `claude` agent into that product with [daemon/incident-prompt.md](daemon/incident-prompt.md): diagnose with evidence → stabilize (instant rollback if the bad deploy caused it) → **fix the root cause properly** (failing test first, full suite green, verified) → redeploy → confirm recovery → plain-language summary to your phone. Hard limits: never spends money, never deletes data, never silences a check to make an alert disappear; if something only a human can do (expired credential, billing), it stabilizes and sends you one concrete instruction. On by default (`monitor.autoIncident`); one dispatch per `incidentCooldownMinutes` prevents loops.
 
 The `post-deploy-monitor` skill remains the third piece: the intensive ~10-minute canary window right after each deploy, inside the build session.
 

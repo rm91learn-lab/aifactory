@@ -10,5 +10,7 @@ Operating rules:
 3. Then run `/gsd:autonomous` to execute all phases: plan, build, verify each one. Engineering discipline applies — failing test first, root cause before fixes, fresh verification evidence before claiming completion.
 4. Commit and push to origin after every phase at minimum. The remote already exists.
 5. Do NOT deploy to any paid or external service, do not create accounts, and do not publish packages. If the product needs deployment, produce the deployment config and a DEPLOY.md with exact manual steps, then stop there.
-6. When the run is complete (or you reach a hard blocker), write `FINAL-REPORT.md` at the repo root: what was built, how to run it locally, test status, assumptions made, what remains. Commit and push it.
+6. When the run is complete (or you reach a hard blocker), write two reports and commit them:
+   - `FINAL-REPORT.md` at the repo root, BEGINNING with a "For the founder" section in plain, non-technical language (what the product does, where to see it, what to try first, what's not included yet), followed by the technical detail: how to run it, test status, assumptions, what remains.
+   - `BUILD-SUMMARY.txt`: 3–5 plain sentences for a non-technical founder. No jargon — describe what a customer would see, not how it works.
 7. If you hit a hard blocker you cannot resolve autonomously, record it in FINAL-REPORT.md under "Blocked" rather than guessing destructively.

@@ -27,6 +27,7 @@ const CONFIG = JSON.parse(fs.readFileSync(path.join(DAEMON_DIR, 'config.json'), 
 const MON = { intervalSeconds: 300, failThreshold: 3, timeoutMs: 10000, autoIncident: false, incidentCooldownMinutes: 60, ...(CONFIG.monitor || {}) };
 const PROMPT_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'build-prompt.md'), 'utf8');
 const INCIDENT_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'incident-prompt.md'), 'utf8');
+const UPDATE_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'update-prompt.md'), 'utf8');
 
 // --- self-check mode (no token needed): validate environment and exit -------
 if (process.argv.includes('--check')) {
@@ -56,6 +57,18 @@ fs.mkdirSync(LOG_DIR, { recursive: true });
 const state = loadState();
 const running = new Map(); // slug -> { child, chatId, watcher, lastPhaseSig }
 const warnedChats = new Set();
+const pendingIdeas = new Map(); // chatId -> message text awaiting new-vs-update routing
+
+function listProducts() {
+  try {
+    return fs.readdirSync(path.join(ROOT, 'products'), { withFileTypes: true })
+      .filter(d => d.isDirectory() && !d.name.startsWith('.')).map(d => d.name).sort();
+  } catch { return []; }
+}
+
+function readSummary(dest, file) {
+  try { return fs.readFileSync(path.join(dest, file), 'utf8').trim().slice(0, 1500); } catch { return ''; }
+}
 
 function loadState() {
   try { return { queue: [], active: [], lastUpdateId: 0, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) }; }
@@ -112,29 +125,89 @@ async function handleMessage(msg) {
   } else if (text === '/health') {
     await send(chatId, healthText(ROOT));
   } else if (text === '/help') {
-    await send(chatId, 'Send a plain message = new product idea (scaffold → GitHub repo → autonomous build).\n/status — progress overview\n/health — deployment health\n/start — show chat id');
+    await send(chatId, 'Just text me in plain words — I handle the rest.\n\n• New product idea → I build it and send you the link.\n• Problem or change ("the payment button is broken", "make the homepage blue") → I\'ll ask which product, then fix it.\n\n/status — how every product is going\n/health — are the live products up\n/start — show chat id');
   } else if (text.startsWith('/')) {
     await send(chatId, `Unknown command ${text.split(' ')[0]}. /help for commands.`);
   } else {
-    state.queue.push({ idea: text, chatId });
-    saveState();
-    const position = state.queue.length + running.size;
-    await send(chatId, running.size >= CONFIG.concurrency
-      ? `Idea queued (position ${position}). I'll start when a build slot frees up.`
-      : 'Idea received — starting the build pipeline.');
-    pump();
+    await routeIdea(chatId, text);
   }
+}
+
+async function routeIdea(chatId, text) {
+  const products = listProducts();
+  const pending = pendingIdeas.get(chatId);
+  if (pending) {
+    pendingIdeas.delete(chatId);
+    if (/new product/i.test(text) || text.startsWith('🆕')) {
+      await enqueue({ type: 'build', idea: pending, chatId });
+    } else {
+      const pick = text.trim().toLowerCase();
+      const target = products.find(p => p.toLowerCase() === pick) || products.find(p => pick.includes(p.toLowerCase()));
+      if (target) await enqueue({ type: 'update', product: target, idea: pending, chatId });
+      else await send(chatId, `I don't recognize "${text.trim()}", so nothing was started. Send the request again to retry.`);
+    }
+  } else if (products.length === 0) {
+    await enqueue({ type: 'build', idea: text, chatId });
+  } else {
+    pendingIdeas.set(chatId, text);
+    await tg('sendMessage', {
+      chat_id: chatId,
+      text: 'Got it. Is this a NEW product, or a change/fix to an existing one? Tap one:',
+      reply_markup: {
+        keyboard: [[{ text: '🆕 New product' }], ...products.map(p => [{ text: p }])],
+        one_time_keyboard: true,
+        resize_keyboard: true,
+      },
+    });
+  }
+}
+
+async function enqueue(job) {
+  state.queue.push(job);
+  saveState();
+  const verb = job.type === 'update' ? `change to "${job.product}"` : 'new product build';
+  await send(job.chatId, running.size >= CONFIG.concurrency
+    ? `Queued: ${verb} (${state.queue.length} in line). I'll start as soon as a slot frees up.`
+    : `On it — starting the ${verb} now.`);
+  pump();
 }
 
 function pump() {
   while (running.size < CONFIG.concurrency && state.queue.length > 0) {
-    const job = state.queue.shift();
+    const job = state.queue[0];
+    if (job.type === 'update' && running.has(job.product)) break; // that product is busy; wait for it
+    state.queue.shift();
     saveState();
-    startBuild(job).catch(async err => {
-      log('build failed to start:', err.message);
-      await send(job.chatId, `Failed to start build: ${err.message}`);
+    const start = job.type === 'update' ? startUpdate : startBuild;
+    start(job).catch(async err => {
+      log('job failed to start:', err.message);
+      await send(job.chatId, `Couldn't start that: ${err.message}`);
     });
   }
+}
+
+async function startUpdate({ product, idea, chatId }) {
+  const dest = path.join(ROOT, 'products', product);
+  if (!fs.existsSync(dest)) throw new Error(`product "${product}" is not on this machine`);
+  const prompt = UPDATE_TEMPLATE.replace('{{PRODUCT}}', product).replace('{{REQUEST}}', idea);
+  const logFile = fs.openSync(path.join(LOG_DIR, `${product}-update.log`), 'a');
+  const child = spawn(CONFIG.claudeBin, ['-p', prompt, '--permission-mode', CONFIG.permissionMode, ...CONFIG.extraClaudeArgs],
+    { cwd: dest, stdio: ['ignore', logFile, logFile] });
+  running.set(product, { child, chatId });
+  saveState();
+  refreshDashboard();
+  child.on('exit', async (code) => {
+    running.delete(product);
+    saveState();
+    try { await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', 'factory: update checkpoint'); } catch {}
+    try { await gitIn(dest, 'push', 'origin', 'HEAD'); } catch (err) { log(`${product}: update push failed:`, err.message); }
+    refreshDashboard();
+    const summary = readSummary(dest, 'UPDATE-SUMMARY.txt');
+    await send(chatId, code === 0
+      ? `✅ Done with "${product}".\n\n${summary || 'The change is in, but no summary was written — ask me to check if unsure.'}`
+      : `⚠️ The change to "${product}" hit a problem.\n${summary || `I saved the details in daemon/logs/${product}-update.log.`}`);
+    pump();
+  });
 }
 
 async function startBuild({ idea, chatId }) {
@@ -178,11 +251,10 @@ async function startBuild({ idea, chatId }) {
     } catch { /* nothing to commit */ }
     try { await gitIn(dest, 'push', 'origin', 'HEAD'); } catch (err) { log(`${slug}: final push failed:`, err.message); }
     refreshDashboard();
-    const report = fs.existsSync(path.join(dest, 'FINAL-REPORT.md'))
-      ? '\nFINAL-REPORT.md is in the repo.' : '';
+    const summary = readSummary(dest, 'BUILD-SUMMARY.txt');
     await send(chatId, code === 0
-      ? `✅ "${slug}" build finished.\n${repoUrl}${report}\n/status for the overview.`
-      : `⚠️ "${slug}" build exited with code ${code}. Last log: daemon/logs/${slug}.log\n${repoUrl}${report}`);
+      ? `✅ "${slug}" is built.\n\n${summary || 'No summary was written — the full report (FINAL-REPORT.md) is in the repo.'}\n\n${repoUrl}\n/status for the overview.`
+      : `⚠️ The "${slug}" build stopped early.\n${summary || `Details saved to daemon/logs/${slug}.log.`}\n${repoUrl}`);
     pump();
   });
 }
@@ -257,10 +329,19 @@ function maybeSpawnIncident(name, entry) {
     .replace('{{URL}}', entry.url)
     .replace('{{OBSERVED}}', entry.error || `HTTP ${entry.httpStatus}, ${entry.fails} consecutive failures`);
   const logFile = fs.openSync(path.join(LOG_DIR, `${name}-incident.log`), 'a');
-  spawn(CONFIG.claudeBin, ['-p', prompt, '--permission-mode', CONFIG.permissionMode, ...CONFIG.extraClaudeArgs],
+  const child = spawn(CONFIG.claudeBin, ['-p', prompt, '--permission-mode', CONFIG.permissionMode, ...CONFIG.extraClaudeArgs],
     { cwd: dest, stdio: ['ignore', logFile, logFile] });
   log(`incident agent dispatched: ${name}`);
-  for (const chatId of CONFIG.allowedChatIds) send(chatId, `🚑 Incident agent dispatched for ${name} — diagnose + safe rollback only; report lands in the repo as INCIDENT-*.md`);
+  for (const chatId of CONFIG.allowedChatIds) send(chatId, `🚑 ${name} is having trouble — I'm on it. I'll fix it and report back; no action needed from you.`);
+  child.on('exit', async (code) => {
+    refreshDashboard();
+    const summary = readSummary(dest, 'INCIDENT-SUMMARY.txt');
+    for (const chatId of CONFIG.allowedChatIds) {
+      await send(chatId, code === 0
+        ? `🚑 ${name}: handled.\n\n${summary || 'Fixed, but no summary was written — /health to confirm it is up.'}`
+        : `🚑 ${name}: I couldn't finish fixing this on my own.\n${summary || `Details: daemon/logs/${name}-incident.log`}`);
+    }
+  });
 }
 
 // --- main long-poll loop -----------------------------------------------------
