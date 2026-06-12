@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const UI_VERSION = 4; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -164,7 +165,7 @@ export function statusText(root = ROOT) {
 
 function html(products) {
   const botUsername = readJson(path.join(ROOT, 'daemon', 'config.json'))?.botUsername || '';
-  const data = JSON.stringify({ generated: new Date().toISOString(), botUsername, products }).replace(/</g, '\\u003c');
+  const data = JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, botUsername, products }).replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -425,7 +426,10 @@ window.addEventListener('hashchange', render);
 function tick() {
   fetch('data.json?_=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); })
-    .then(function (d) { products = d.products; last = Date.now(); render(); })
+    .then(function (d) {
+      if (d.uiVersion && d.uiVersion !== DATA.uiVersion) { location.reload(); return; }
+      products = d.products; last = Date.now(); render();
+    })
     .catch(function () {});
 }
 if (location.protocol === 'file:') {
@@ -445,7 +449,7 @@ export function buildDashboard(root = ROOT) {
   const products = collectProducts(root);
   const out = path.join(root, 'dashboard');
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, 'data.json'), JSON.stringify({ generated: new Date().toISOString(), products }, null, 2));
+  fs.writeFileSync(path.join(out, 'data.json'), JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, products }, null, 2));
   fs.writeFileSync(path.join(out, 'index.html'), html(products));
   return products;
 }
