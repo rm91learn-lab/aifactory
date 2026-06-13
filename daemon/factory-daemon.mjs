@@ -157,7 +157,7 @@ async function tg(method, params) {
 const send = (chatId, text) => tg('sendMessage', { chat_id: chatId, text: String(text).slice(0, 4000) });
 
 function dashboardLink() {
-  return CONFIG.tunnelUrl || `http://localhost:${CONFIG.dashboardPort || 7717}`;
+  return (typeof tunnelUrl !== 'undefined' && tunnelUrl) || `http://localhost:${CONFIG.dashboardPort || 7717}`;
 }
 
 function slugify(text) {
@@ -744,6 +744,30 @@ http.createServer((req, res) => {
   }
   log('dashboard server error:', err.message);
 }).listen(DASH_PORT, '127.0.0.1', () => log(`dashboard live at http://localhost:${DASH_PORT}`));
+
+// --- remote access: self-managed Cloudflare quick tunnel to the dashboard -----
+// Exposes the (basic-auth-gated) local dashboard at a public HTTPS URL, captures
+// the assigned URL, and texts it once. Restart = fresh URL, re-announced.
+let tunnelUrl = '';
+function startTunnel() {
+  if (CONFIG.tunnel === false) return;
+  let bin;
+  try { bin = execFileSync('which', ['cloudflared'], { encoding: 'utf8' }).trim(); } catch { log('cloudflared not installed — remote tunnel skipped'); return; }
+  const t = spawn(bin, ['tunnel', '--url', `http://localhost:${DASH_PORT}`, '--no-autoupdate'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const onData = (c) => {
+    const m = String(c).match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+    if (m && !tunnelUrl) {
+      tunnelUrl = m[0];
+      log('remote tunnel up:', tunnelUrl);
+      for (const chatId of CONFIG.allowedChatIds) {
+        send(chatId, `🌐 Remote dashboard is live:\n${tunnelUrl}\nLogin: factory · ${VIEW_PW}\n(URL changes if the factory restarts — I'll send the new one.)`);
+      }
+    }
+  };
+  t.stdout.on('data', onData); t.stderr.on('data', onData);
+  t.on('exit', () => { log('tunnel exited; restarting in 10s'); tunnelUrl = ''; setTimeout(startTunnel, 10000); });
+}
+startTunnel();
 
 // --- main long-poll loop -----------------------------------------------------
 log(`factory daemon up — owner=${CONFIG.githubOwner}, concurrency=${CONFIG.concurrency}, allowed chats: ${CONFIG.allowedChatIds.join(', ') || '(none yet — send /start to your bot to get your chat id)'}`);
