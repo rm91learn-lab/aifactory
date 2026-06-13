@@ -751,8 +751,8 @@ http.createServer((req, res) => {
 let tunnelUrl = '';
 function startTunnel() {
   if (CONFIG.tunnel === false) return;
-  let bin;
-  try { bin = execFileSync('which', ['cloudflared'], { encoding: 'utf8' }).trim(); } catch { log('cloudflared not installed — remote tunnel skipped'); return; }
+  // resolve cloudflared by absolute path (launchd PATH may not include brew dirs)
+  const bin = ['/opt/homebrew/bin/cloudflared', '/usr/local/bin/cloudflared'].find(p => fs.existsSync(p)) || 'cloudflared';
   const t = spawn(bin, ['tunnel', '--url', `http://localhost:${DASH_PORT}`, '--no-autoupdate'], { stdio: ['ignore', 'pipe', 'pipe'] });
   const onData = (c) => {
     const m = String(c).match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
