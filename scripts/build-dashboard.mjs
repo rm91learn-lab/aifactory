@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 7; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 8; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -25,6 +25,17 @@ function read(file) {
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+// The factory's work queue: jobs waiting to be built (daemon state.json).
+function readFactoryQueue(root) {
+  const st = readJson(path.join(root, 'daemon', 'state.json')) || {};
+  const pending = (st.queue || []).map(j => {
+    const idea = String(j.idea || '').replace(/\s+/g, ' ').trim();
+    const label = j.type === 'build' ? 'new product build' : (idea.length > 72 ? idea.slice(0, 72) + '…' : idea) || 'change';
+    return { product: j.product || '(new product)', type: j.type || 'update', label };
+  });
+  return { pending };
 }
 
 // '## Phase 2: Booking flow' headings with their checkbox tasks.
@@ -141,7 +152,7 @@ export function collectProducts(root = ROOT) {
     return {
       name,
       idea: read(path.join(dir, 'IDEA.md')).replace(/^#.*\n/, '').trim().slice(0, 600),
-      building: active.includes(name),
+      building: active.includes(name) || (a && a.updatedAt && (Date.now() - new Date(a.updatedAt).getTime() < 180000)),
       pct: pctFinal,
       board,
       tasks,
@@ -177,7 +188,7 @@ export function statusText(root = ROOT) {
 
 function html(products) {
   const botUsername = readJson(path.join(ROOT, 'daemon', 'config.json'))?.botUsername || '';
-  const data = JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, botUsername, products }).replace(/</g, '\\u003c');
+  const data = JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, botUsername, queue: readFactoryQueue(ROOT), products }).replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -190,6 +201,12 @@ function html(products) {
   h1{font-size:21px;font-weight:600}
   #upd{color:#7c8aa0;font-size:13px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+  .qpanel{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:14px 16px;margin-bottom:16px}
+  .qh{font-size:14px;font-weight:600;margin-bottom:10px}
+  .qsec{margin-bottom:9px}.qsec:last-child{margin-bottom:0}
+  .ql{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7c8aa0;margin-bottom:4px}
+  .qitem{font-size:13px;color:#c3cdda;padding:3px 0 3px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qitem.b{color:#d29922}.qitem.dim{color:#56627a}
   .pcard{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;cursor:pointer;transition:border-color .15s}
   .pcard:hover{border-color:#3a4straight;border-color:#34507f}
   .pc-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -279,7 +296,7 @@ function html(products) {
 <header><h1 onclick="location.hash=''" style="cursor:pointer">AI-Factory</h1><span id="upd"></span></header>
 <div id="view"></div>
 <script>
-var DATA=${data},products=DATA.products,last=Date.now();
+var DATA=${data},products=DATA.products,fqueue=DATA.queue||{pending:[]},last=Date.now();
 var ST=["Capture","Plan","Design","Build","QA","Release","Operate","Evolve"];
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
 function esc(s){return String(s==null?"":s);}
@@ -330,7 +347,23 @@ function pcard(p){
   c.appendChild(el("div","pc-f",(p.pct||0)+"% · "+(p.lastCommit||"no activity")));
   return c;
 }
+function queuePanel(){
+  var fq=fqueue||{pending:[]};
+  var bnow=products.filter(function(p){return p.building;});
+  var w=el("div","qpanel");
+  w.appendChild(el("div","qh","Factory queue"));
+  var s1=el("div","qsec");s1.appendChild(el("div","ql","🔨 building now"));
+  if(bnow.length)bnow.forEach(function(p){var e=(p.activity&&p.activity.entries&&p.activity.entries.length)?p.activity.entries[p.activity.entries.length-1].s:"working";s1.appendChild(el("div","qitem b","● "+p.name+" — "+e));});
+  else s1.appendChild(el("div","qitem dim","nothing building right now"));
+  w.appendChild(s1);
+  var s2=el("div","qsec");s2.appendChild(el("div","ql","⏳ up next"));
+  if(fq.pending&&fq.pending.length)fq.pending.forEach(function(j){s2.appendChild(el("div","qitem","○ "+j.product+" — "+j.label));});
+  else s2.appendChild(el("div","qitem dim","queue empty — send an idea to add work"));
+  w.appendChild(s2);
+  return w;
+}
 function renderGrid(v){
+  v.appendChild(queuePanel());
   if(!products.length){v.appendChild(el("div","empty","No products yet — text an idea to your factory bot."));return;}
   var g=el("div","grid");products.forEach(function(p){g.appendChild(pcard(p));});v.appendChild(g);
 }
@@ -444,7 +477,7 @@ function render(){
   if(p)renderProduct(v,p);else renderGrid(v);
 }
 window.addEventListener("hashchange",render);
-function tick(){fetch("data.json?_="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){if(d.uiVersion&&d.uiVersion!==DATA.uiVersion){location.reload();return;}products=d.products;last=Date.now();render();}).catch(function(){});}
+function tick(){fetch("data.json?_="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){if(d.uiVersion&&d.uiVersion!==DATA.uiVersion){location.reload();return;}products=d.products;fqueue=d.queue||fqueue;last=Date.now();render();}).catch(function(){});}
 if(location.protocol==="file:")setTimeout(function(){location.reload();},60000);else setInterval(tick,15000);
 setInterval(function(){document.getElementById("upd").textContent="updated "+Math.round((Date.now()-last)/1000)+"s ago";},1000);
 render();
@@ -456,7 +489,7 @@ export function buildDashboard(root = ROOT) {
   const products = collectProducts(root);
   const out = path.join(root, 'dashboard');
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, 'data.json'), JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, products }, null, 2));
+  fs.writeFileSync(path.join(out, 'data.json'), JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, queue: readFactoryQueue(root), products }, null, 2));
   fs.writeFileSync(path.join(out, 'index.html'), html(products));
   return products;
 }
