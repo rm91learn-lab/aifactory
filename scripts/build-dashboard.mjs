@@ -164,7 +164,7 @@ export function collectProducts(root = ROOT) {
       health: h ? { up: h.up, ms: h.ms, url: h.url, downSince: h.downSince } : null,
       activity: a ? { updatedAt: a.updatedAt, counts: a.counts, entries: (a.entries || []).slice(-40) } : null,
       commitLog: git(dir, 'log', '--format=%cr · %s', '-40').slice(0, 4000),
-      runLabel: { build: 'building', change: 'applying change', qa: 'running QA', incident: 'fixing incident' }[a?.runKind] || (a?.runKind ? 'working' : null),
+      runLabel: { strategy: 'drafting strategy', build: 'building', change: 'applying change', qa: 'running QA', incident: 'fixing incident' }[a?.runKind] || (a?.runKind ? 'working' : null),
       requirements: read(path.join(planning, 'REQUIREMENTS.md')).trim().slice(0, 6000),
       assumptions: read(path.join(planning, 'ASSUMPTIONS.md')).replace(/^# .*\n+/,'').replace(/^Each entry.*\n+/m,'').trim().slice(0, 4000),
       qaVerdict: read(path.join(dir, 'QA-VERDICT.txt')).trim().slice(0, 600),

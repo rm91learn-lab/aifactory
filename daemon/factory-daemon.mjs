@@ -34,6 +34,7 @@ const UPDATE_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'update-prompt.md'
 const QA_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'qa-prompt.md'), 'utf8');
 const QA_ENABLED = CONFIG.qa?.enabled !== false;
 const UPGRADE_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'upgrade-prompt.md'), 'utf8');
+const STRATEGY_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'strategy-prompt.md'), 'utf8');
 
 // --- self-check mode (no token needed): validate environment and exit -------
 if (process.argv.includes('--check')) {
@@ -68,6 +69,7 @@ const state = loadState();
 const running = new Map(); // slug -> { child, chatId, watcher, lastPhaseSig }
 const warnedChats = new Set();
 const pendingIdeas = new Map(); // chatId -> message text awaiting new-vs-update routing
+const pendingStrategy = new Map(); // chatId -> {slug,dest,idea,repoUrl} awaiting strategy approval
 
 function listProducts() {
   try {
@@ -212,6 +214,7 @@ async function handleMessage(msg) {
     state.queue = [];
     saveState();
     pendingIdeas.delete(chatId);
+    pendingStrategy.delete(chatId);
     const killed = [];
     for (const [key, entry] of running) {
       try { entry.child.kill('SIGTERM'); killed.push(key); } catch {}
@@ -221,6 +224,8 @@ async function handleMessage(msg) {
       : 'Nothing was running or waiting.');
   } else if (text.startsWith('/')) {
     await send(chatId, `Unknown command ${text.split(' ')[0]}. /help for commands.`);
+  } else if (pendingStrategy.has(chatId)) {
+    await handleStrategyReply(chatId, text);
   } else {
     await routeIdea(chatId, text);
   }
@@ -387,42 +392,73 @@ async function startUpdate({ product, idea, chatId, qaRound = 0, retried = 0 }) 
   });
 }
 
-async function startBuild({ idea, chatId, name, retried = 0 }) {
+async function startBuild({ idea, chatId, name }) {
   const slug = name && fs.existsSync(path.join(ROOT, 'products', name)) ? slugify(name) : (name || slugify(suggestName(idea)));
   const dest = path.join(ROOT, 'products', slug);
-  await send(chatId, `🏭 Building "${slug}"\n1/3 scaffolding workspace…`);
-
-  // 1. Scaffold workspace + create GitHub repo (new-product.sh handles both).
+  await send(chatId, `🏭 "${slug}" — scaffolding the repo, then drawing up the strategy for your approval (no code until you approve).`);
+  // Scaffold workspace + GitHub repo + record the idea
   await execFileP('bash', [path.join(ROOT, 'scripts', 'new-product.sh'), slug, '--github', '--owner', CONFIG.githubOwner],
     { cwd: ROOT, env: { ...process.env, FACTORY_REPO_VISIBILITY: CONFIG.repoVisibility } });
-
-  // 2. Record the idea verbatim and push it.
   fs.writeFileSync(path.join(dest, 'IDEA.md'), `# Product idea\n\n${idea}\n\n_Received via factory bot, ${new Date().toISOString()}_\n`);
-  await gitIn(dest, 'add', '-A');
-  await gitIn(dest, 'commit', '-m', 'factory: record product idea');
+  await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', 'factory: record product idea');
   await gitIn(dest, 'push', '-u', 'origin', 'HEAD');
   const repoUrl = `https://github.com/${CONFIG.githubOwner}/${slug}`;
-  await send(chatId, `2/3 repo created: ${repoUrl}\n3/3 launching autonomous build — I'll ping you at each phase. /status anytime.`);
+  // MANDATORY strategy gate (step 1) — deliberate a strategy, present for human approval before any build
+  await runStrategy(slug, dest, chatId, idea, repoUrl, '');
+}
 
-  // 3. Launch the headless build.
+// Step 1 (mandatory): office-hours strategy → STRATEGY.md → present to founder for approval.
+async function runStrategy(slug, dest, chatId, idea, repoUrl, feedback) {
+  await send(chatId, `🧭 Deliberating the strategy for "${slug}" — I'll send it for your approval shortly (no build until then).`);
+  const prompt = STRATEGY_TEMPLATE.replace('{{IDEA}}', idea)
+    .replace('{{FEEDBACK}}', feedback ? `\nFOUNDER FEEDBACK on the previous strategy — revise to address it:\n${feedback}\n` : '');
+  const child = spawnAgent(dest, prompt, `${slug}-strategy`, 'strategy');
+  running.set(slug, { child, chatId });
+  saveState(); refreshDashboard();
+  child.on('exit', async () => {
+    running.delete(slug); saveState();
+    try { await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', 'factory: product strategy'); await gitIn(dest, 'push', 'origin', 'HEAD'); } catch {}
+    refreshDashboard();
+    const summary = readSummary(dest, 'STRATEGY-SUMMARY.txt') || readSummary(dest, 'STRATEGY.md') || 'Strategy written — open STRATEGY.md in the repo.';
+    pendingStrategy.set(chatId, { slug, dest, idea, repoUrl });
+    await tg('sendMessage', {
+      chat_id: chatId,
+      text: `🧭 STRATEGY for "${slug}" — approve before I build:\n\n${summary.slice(0, 3200)}\n\n✅ Approve to build · type any changes to revise · ❌ Cancel`,
+      reply_markup: { keyboard: [[{ text: '✅ Approve & build' }], [{ text: '❌ Cancel' }]], one_time_keyboard: true, resize_keyboard: true },
+    });
+    pump();
+  });
+}
+
+async function handleStrategyReply(chatId, text) {
+  const s = pendingStrategy.get(chatId);
+  if (!s) return;
+  const t = text.trim();
+  if (/^✅|^approve|^yes\b|^go\b|build/i.test(t)) {
+    pendingStrategy.delete(chatId);
+    await send(chatId, `Approved — building "${s.slug}" to the strategy now, through the full pipeline (research → plan review → design → build → QA → staged).`);
+    runProductBuild(s.slug, s.dest, chatId, s.repoUrl, s.idea);
+  } else if (/^❌|^cancel|^stop/i.test(t)) {
+    pendingStrategy.delete(chatId);
+    await send(chatId, `Cancelled "${s.slug}". The repo + strategy are saved; say the word to resume.`);
+  } else {
+    pendingStrategy.delete(chatId);
+    await send(chatId, `Revising the strategy for "${s.slug}" with your input — I'll resend it for approval.`);
+    runStrategy(s.slug, s.dest, chatId, s.idea, s.repoUrl, t);
+  }
+}
+
+// The actual build — only reached after the founder approves the strategy.
+async function runProductBuild(slug, dest, chatId, repoUrl, idea, retried = 0) {
   const prompt = PROMPT_TEMPLATE.replace('{{IDEA}}', idea);
-  const child = spawnAgent(dest, prompt, slug, "build");
-
+  const child = spawnAgent(dest, prompt, slug, 'build');
   const entry = { child, chatId, lastPhaseSig: '' };
   entry.watcher = setInterval(() => checkProgress(slug, dest, entry), CONFIG.statusPollSeconds * 1000);
   running.set(slug, entry);
-  saveState();
-  refreshDashboard();
-
+  saveState(); refreshDashboard();
   child.on('exit', async (code) => {
-    clearInterval(entry.watcher);
-    running.delete(slug);
-    saveState();
-    // Safety net: push anything the build left uncommitted, then the final state.
-    try {
-      await gitIn(dest, 'add', '-A');
-      await gitIn(dest, 'commit', '-m', 'factory: final build state');
-    } catch { /* nothing to commit */ }
+    clearInterval(entry.watcher); running.delete(slug); saveState();
+    try { await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', 'factory: final build state'); } catch {}
     try { await gitIn(dest, 'push', 'origin', 'HEAD'); } catch (err) { log(`${slug}: final push failed:`, err.message); }
     refreshDashboard();
     if (code === 0 && QA_ENABLED) {
@@ -431,10 +467,8 @@ async function startBuild({ idea, chatId, name, retried = 0 }) {
       return;
     }
     if (code !== 0 && !retried && isTransientFailure(slug)) {
-      await send(chatId, `⚠️ The AI service hit a temporary capacity limit while building "${slug}" — not a problem with your product. Retrying automatically.`);
-      state.queue.push({ type: 'update', product: slug, chatId, retried: 1, idea: 'The previous build attempt was interrupted partway by a temporary AI service outage. Build the complete product from IDEA.md following the CLAUDE.md initial-build directive. Reuse and verify anything already done; finish everything.' });
-      saveState();
-      pump();
+      await send(chatId, `⚠️ The AI service hit a temporary capacity limit on "${slug}" — retrying automatically.`);
+      runProductBuild(slug, dest, chatId, repoUrl, idea, 1);
       return;
     }
     const summary = readSummary(dest, 'BUILD-SUMMARY.txt');

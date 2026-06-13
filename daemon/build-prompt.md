@@ -6,8 +6,12 @@ PRODUCT IDEA:
 Operating rules:
 
 1. Never wait for human input. Wherever a workflow or skill would ask the user a question, make the pragmatic call yourself and append it to `.planning/ASSUMPTIONS.md` (create it if missing) as one line: the question, your decision, and why.
-2. Follow this workspace's CLAUDE.md pipeline. Start with `/gsd:new-project` to turn the idea into requirements and a roadmap. Scope ruthlessly to an MVP: the smallest vertical slice that proves the idea works end to end. Park everything else in the roadmap's later phases.
-3. Then run `/gsd:autonomous` to execute all phases: plan, build, verify each one. Engineering discipline applies — failing test first, root cause before fixes, fresh verification evidence before claiming completion.
+2. **The strategy is already approved.** `STRATEGY.md` at the repo root was written in step 1 and approved by the founder. It is your contract — build to it. In particular, its **domain model (the entities and how they relate)** is the backbone of the product: the data model, APIs, and UI must all be built ON that backbone, not as a flat pile of siloed modules. Re-read STRATEGY.md before you start and do not silently drift from it; if reality forces a deviation, log it in `.planning/ASSUMPTIONS.md`.
+3. Follow this workspace's CLAUDE.md pipeline in full — do NOT shortcut to just new-project + autonomous (that is what produced shallow, mediocre products before). Concretely, run the documented stages:
+   - `/gsd:new-project` to turn STRATEGY.md into requirements + a roadmap. The roadmap's domain/data model MUST match STRATEGY.md's domain model (real entities + relationships + hierarchy/org where the domain has one — not TEXT columns standing in for related entities). Scope ruthlessly to the MVP defined in STRATEGY.md; park the rest in later phases.
+   - For each phase: `/gsd:plan-phase`, then review the plan with `autoplan` (CEO/eng/design/devex). Use `design-consultation` to establish a design system and `design-html`/`design-review` so the UI is genuinely good, not a default-bootstrap shell.
+   - `/gsd:execute-phase` (or `/gsd:autonomous` to run the phases) to build + verify each phase. Engineering discipline applies — failing test first, root cause before fixes, fresh verification evidence before claiming completion.
+   - Run `review-code` and `cso` (security) before you consider a phase done. Independent factory QA still gates production regardless.
 4. Commit and push to origin after every phase at minimum. The remote already exists.
 5. Hosting — Cloudflare is the factory default, free tier only. IRON RULE: **nothing reaches production without passing independent QA — you do not promote; the factory does, after QA.**
    - Check `npx -y wrangler whoami`. If authenticated, build Cloudflare-compatible from the start (Workers for APIs/server code, Pages for static sites, D1/KV free tier for data).

@@ -39,6 +39,17 @@ API routes existing does NOT mean a module shipped. A module a user cannot reach
 - Also verify the LIVE/staged version under test is the CURRENT build (not a stale deploy): the version's git SHA / build marker must match HEAD.
 - "Backend route exists but no UI" is the single most important failure to catch. Treat the product as a non-technical client would: if they can't see it and click it, it isn't done.
 
+## DOMAIN-COHERENCE CHECK (mandatory, gating) — is it a real product or a pile of modules?
+
+A product can pass the showroom check (every module reachable) and still be mediocre because the modules are siloed — disconnected screens that don't share a real domain model. This check catches that.
+
+- Read `STRATEGY.md` (the founder-approved strategy) and its **domain model**. Build the list of core entities and the relationships/hierarchy it specifies.
+- Verify the built product actually implements that backbone, not a flat shortcut:
+  - Real related entities exist where the domain calls for them — not a TEXT column or a free-text field standing in for what should be a related entity (e.g. an HRMS must have departments/org-units and a reporting hierarchy as real, linked entities, not a `department` string and a bolted-on `manager_id` with no relationship).
+  - The relationships are navigable in the UI: from one entity you can reach the things it relates to (e.g. open a department → see its people; open a person → see their manager and reports).
+  - Hierarchy/org structure the domain implies is modeled and visible, not absent.
+- If the product is a set of disconnected modules with no shared backbone, or the data model contradicts STRATEGY.md's domain model, that is a FAIL — record exactly which relationships/entities are missing or faked.
+
 ## CODE HYGIENE & REMOVAL CHECK (gating)
 
 - **Dead code:** flag any function, file, endpoint, route, or config the change left UNREFERENCED as a finding. Code superseded by this change must have been deleted in this change — leftover orphans are a defect.
