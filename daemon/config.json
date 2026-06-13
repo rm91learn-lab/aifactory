@@ -12,10 +12,6 @@
   "extraClaudeArgs": [],
   "pushDashboard": false,
   "dashboardPort": 7717,
-  "cloudDashboard": {
-    "enabled": true,
-    "url": "https://factory-console.rm91-learn.workers.dev"
-  },
   "qa": {
     "enabled": true
   },
@@ -25,5 +21,6 @@
     "timeoutMs": 10000,
     "autoIncident": true,
     "incidentCooldownMinutes": 60
-  }
+  },
+  "tunnelUrl": ""
 }

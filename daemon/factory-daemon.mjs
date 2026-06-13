@@ -157,8 +157,7 @@ async function tg(method, params) {
 const send = (chatId, text) => tg('sendMessage', { chat_id: chatId, text: String(text).slice(0, 4000) });
 
 function dashboardLink() {
-  const cloud = CONFIG.cloudDashboard;
-  return cloud?.enabled && cloud.url ? cloud.url : `http://localhost:${CONFIG.dashboardPort || 7717}`;
+  return CONFIG.tunnelUrl || `http://localhost:${CONFIG.dashboardPort || 7717}`;
 }
 
 function slugify(text) {
@@ -462,42 +461,8 @@ async function checkProgress(slug, dest, entry) {
   }
 }
 
-let lastCloudPush = 0;
-function pushDashboardOnline() {
-  const cloud = CONFIG.cloudDashboard;
-  const token = process.env.DASHBOARD_PUSH_TOKEN;
-  if (!cloud?.enabled || !cloud.url || !token) return;
-  if (Date.now() - lastCloudPush < 10_000) return;
-  lastCloudPush = Date.now();
-  try {
-    const html = fs.readFileSync(path.join(ROOT, 'dashboard', 'index.html'), 'utf8');
-    const data = fs.readFileSync(path.join(ROOT, 'dashboard', 'data.json'), 'utf8');
-    fetch(`${cloud.url.replace(/\/$/, '')}/update`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ html, data }),
-    }).catch(err => log('cloud dashboard push failed:', err.message));
-  } catch (err) {
-    log('cloud dashboard push failed:', err.message);
-  }
-}
-
-let pushingDashboard = false;
 function refreshDashboard() {
-  const products = buildDashboard(ROOT);
-  pushDashboardOnline();
-  if (CONFIG.pushDashboard && !pushingDashboard) {
-    pushingDashboard = true;
-    (async () => {
-      try {
-        await gitIn(ROOT, 'add', 'dashboard');
-        await gitIn(ROOT, 'commit', '-m', 'dashboard: refresh');
-        await gitIn(ROOT, 'push');
-      } catch { /* no changes or push race — fine */ }
-      pushingDashboard = false;
-    })();
-  }
-  return products;
+  return buildDashboard(ROOT);
 }
 
 const gitIn = (cwd, ...args) => execFileP('git', ['-C', cwd, ...args]);
@@ -727,9 +692,21 @@ function freshDashboard() {
   if (Date.now() - lastGen > 3000) { buildDashboard(ROOT); lastGen = Date.now(); }
 }
 const DASH_PORT = CONFIG.dashboardPort || 7717;
+// Basic-auth gate so the dashboard is safe to expose through a tunnel.
+// Set daemon/.env DASHBOARD_VIEW_PASSWORD (user "factory"); no password = localhost-only, open.
+const VIEW_PW = process.env.DASHBOARD_VIEW_PASSWORD || '';
+function dashAuthed(req) {
+  if (!VIEW_PW) return true; // unset → no gate (localhost dev)
+  const h = req.headers['authorization'] || '';
+  return h === 'Basic ' + Buffer.from('factory:' + VIEW_PW).toString('base64');
+}
 http.createServer((req, res) => {
   try {
     const url = (req.url || '/').split('?')[0];
+    if (!dashAuthed(req)) {
+      res.writeHead(401, { 'www-authenticate': 'Basic realm="AI-Factory"' });
+      res.end('sign in'); return;
+    }
     if (url === '/' || url === '/index.html') {
       freshDashboard();
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
