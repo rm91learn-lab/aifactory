@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 // AI-Factory dashboard generator — zero dependencies.
-// Overview = product cards only. Per-product page (#p=<name>): zig-zag drill-down
-// roadmap (stage → task → evidence) + editable scope, with parallel scrollable
-// Build-activity and QA-activity windows. Data from .factory-activity.json,
-// QA-REPORT.md and git. Served live at localhost:7717 by the daemon.
+// Overview = product cards only. Per-product page (#p=<name>): a project-plan grid
+// (features × lifecycle stages, cumulative ticks), an editable-scope section, and
+// parallel scrollable Build-activity and QA-activity windows. Re-renders only when
+// data changes (no flicker). Data from .factory-activity.json, QA-REPORT.md and git.
+// Served live at localhost:7717 by the daemon.
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 10; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 11; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -213,6 +214,18 @@ function html(products) {
   .windows{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
   .windows .qa{margin-bottom:0}
   @media(max-width:760px){.windows{grid-template-columns:1fr}}
+  .plan{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;margin-bottom:16px}
+  .ptbl{width:100%;border-collapse:collapse;font-size:13px}
+  .ptbl th{text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#7c8aa0;font-weight:500;padding:6px 4px;border-bottom:0.5px solid #232f47}
+  .ptbl th.fcol{text-align:left}
+  .ptbl td{padding:8px 4px;border-bottom:0.5px solid #141c2b;text-align:center}
+  .ptbl td.fcol{text-align:left;color:#dbe3ee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+  .ptbl tr:last-child td{border-bottom:none}
+  .cell{color:#2b3650}
+  .cell.done{color:#3fb950;font-weight:600}
+  .cell.now{color:#d29922;font-weight:600}
+  .sh2{cursor:pointer}
+  .sbody2{max-height:0;overflow:hidden;transition:max-height .3s}
   .pcard{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;cursor:pointer;transition:border-color .15s}
   .pcard:hover{border-color:#3a4straight;border-color:#34507f}
   .pc-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -375,17 +388,6 @@ function reqLines(p){
   var out=[];(esc(p.requirements).split("\\n")).forEach(function(l){var m=l.match(/^\\s*[-*]\\s*\\[( |x)\\]\\s*(.+)/i);if(m)out.push({s:m[2].trim(),done:m[1].toLowerCase()==="x"});});
   return out;
 }
-function evidence(p,key){
-  if(key==="Capture")return p.idea||"—";
-  if(key==="Plan"){var r="";if(p.requirements)r+="WHAT'S PLANNED:\\n"+p.requirements+"\\n\\n";if(p.assumptions)r+="DECISIONS MADE FOR YOU:\\n"+p.assumptions;return r||"Plan documents not written yet.";}
-  if(key==="Design")return "Design system & screens (see live preview).";
-  if(key==="Build"){var b=(p.board||[]).map(function(x){return (x.status==="done"?"✓ ":"○ ")+x.name;}).join("\\n");return b||"Build tasks in progress.";}
-  if(key==="QA")return p.stateLine||"Independent QA: browser journeys, security, accessibility, showroom check.";
-  if(key==="Release")return p.deployUrl?("Live: "+p.deployUrl):"Not yet promoted to production.";
-  if(key==="Operate")return p.health?(p.health.up?("Healthy · "+p.health.ms+"ms"):"DOWN"):"Monitored 24/7 once live.";
-  if(key==="Evolve")return (p.commits||0)+" updates · "+(p.lastCommit||"");
-  return "";
-}
 function setH(e,o){e.style.maxHeight=o?e.scrollHeight+"px":"0";}
 function sendReq(product,kind,text){
   fetch("/request",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({product:product,kind:kind,text:text})})
@@ -448,68 +450,87 @@ function renderProduct(v,p){
   wl.onclick=function(){live.classList.toggle("show");wl.classList.toggle("on");};
   if(p.building){live.classList.add("show");wl.classList.add("on");}
   var windows=el("div","windows");windows.appendChild(buildPanel(p));windows.appendChild(qaPanel(p));v.appendChild(windows);
-  // zig-zag roadmap
-  var road=el("div","road");road.appendChild(el("div","spine"));
-  var idx=stageIdx(p);
-  ST.forEach(function(s,i){
-    var cls=i<idx?"done":i===idx?"active":"todo";
-    var st=el("div","stage "+cls);st.style.animationDelay=(0.12+i*0.1)+"s";
-    st.appendChild(el("div","node",i<idx?"✓":String(i+1)));
-    var card=el("div","scard");
-    var sh=el("div","sh");sh.appendChild(el("span","tt",(i+1)+" · "+s));sh.appendChild(el("span","pill",cls==="done"?"done":cls==="active"?"active":"upcoming"));sh.appendChild(el("i","chev","▾"));
-    card.appendChild(sh);
-    var body=el("div","sbody");
-    // tasks per stage
-    var tlist=el("ul","tasks");
-    var tasks=[];
-    if(s==="Plan"){tasks=[["Requirements written",p.requirements],["Decisions logged",p.assumptions]];}
-    else if(s==="Build"){tasks=(p.board||[]).map(function(b){return [b.name,(b.status==="done"?"Completed.":"In progress.")+(b.tasks&&b.tasks.length?" "+b.tasks.filter(function(t){return t.done;}).length+"/"+b.tasks.length+" tasks.":"")];});if(!tasks.length)tasks=[["Build","In progress."]];}
-    else {tasks=[[s,evidence(p,s)]];}
-    tasks.forEach(function(t){
-      var tk=el("li","task "+(cls==="done"?"t":cls==="active"&&s==="Build"?"now":""));
-      var tr=el("div","trow");tr.appendChild(el("i","ic",cls==="done"?"✓":"○"));tr.appendChild(el("span","tlbl",t[0]));tr.appendChild(el("i","chev","▾"));tr.style.fontSize="14px";
-      tk.appendChild(tr);
-      var det=el("div","det");det.appendChild(el("div","detin",esc(t[1])||"—"));tk.appendChild(det);
-      tr.addEventListener("click",function(){var o=!tk.classList.contains("topen");tk.classList.toggle("topen",o);setH(det,o);});
-      tlist.appendChild(tk);
+  // project-plan grid: features (rows) × lifecycle stages (columns), cumulative ticks
+  v.appendChild(planGrid(p));
+  // edit scope (collapsible)
+  v.appendChild(scopeEditor(p));
+}
+var PCOLS=[["backlog","Planned"],["dev","Built"],["qa","Tested"],["done","Live"]];
+var PRANK={backlog:0,dev:1,qa:2,done:3};
+function planGrid(p){
+  var rows=(p.board||[]).slice();
+  var w=el("div","plan");
+  var h=el("div","qa-h");h.appendChild(el("span",null,"📋 Project plan"));
+  var doneN=rows.filter(function(r){return r.status==="done";}).length;
+  h.appendChild(el("span","pill",rows.length?(doneN+" of "+rows.length+" features live · "+p.pct+"%"):p.pct+"%"));
+  w.appendChild(h);
+  if(!rows.length){w.appendChild(el("div","qitem dim","Plan is being drawn up — features will appear here as the factory plans them."));return w;}
+  var tbl=el("table","ptbl");
+  var thead=el("tr");thead.appendChild(el("th","fcol","Feature"));
+  PCOLS.forEach(function(c){thead.appendChild(el("th",null,c[1]));});
+  tbl.appendChild(thead);
+  rows.forEach(function(r){
+    var rank=PRANK[r.status]==null?0:PRANK[r.status];
+    var tr=el("tr");
+    var fn=el("td","fcol",r.name);if(r.change)fn.textContent="🔧 "+r.name;tr.appendChild(fn);
+    PCOLS.forEach(function(c,ci){
+      var td=el("td");
+      if(ci<=rank){td.className="cell done";td.textContent="✓";}
+      else if(ci===rank+1&&r.status!=="done"){td.className="cell now";td.textContent="…";}
+      else{td.className="cell";td.textContent="";}
+      tr.appendChild(td);
     });
-    body.appendChild(tlist);
-    // editable scope inside Plan
-    if(s==="Plan"){
-      var items=reqLines(p);
-      if(items.length){
-        var hdr=el("div","detin","Edit scope — add or remove features; the factory re-plans:");hdr.style.margin="6px 10px";body.appendChild(hdr);
-        var changes={add:[],rm:[]};
-        items.slice(0,12).forEach(function(it){
-          var row=el("div","ed");row.appendChild(el("span","lt",it.s));var x=el("span","x","✕");row.appendChild(x);
-          x.onclick=function(){if(row.classList.contains("rm")){row.classList.remove("rm");changes.rm=changes.rm.filter(function(z){return z!==it.s;});}else{row.classList.add("rm");changes.rm.push(it.s);}};
-          body.appendChild(row);
-        });
-        var add=el("div","edadd");var inp=document.createElement("input");inp.placeholder="add a feature…";var ab=el("button","btn bl","add");
-        ab.onclick=function(){if(inp.value.trim()){changes.add.push(inp.value.trim());var row=el("div","ed new");row.appendChild(el("span","lt",inp.value.trim()));body.insertBefore(row,add);inp.value="";}};
-        add.appendChild(inp);add.appendChild(ab);body.appendChild(add);
-        var ap=el("button","btn bl","Apply to build →");ap.style.margin="4px 10px 10px";
-        ap.onclick=function(){if(!changes.add.length&&!changes.rm.length){alert("No changes to apply.");return;}var txt="Scope edit. ADD: "+(changes.add.join("; ")||"none")+". REMOVE: "+(changes.rm.join("; ")||"none")+".";sendReq(p.name,"scope",txt);};
-        body.appendChild(ap);
-      }
-    }
-    card.appendChild(body);
-    st.appendChild(card);
-    sh.addEventListener("click",function(){var o=!st.classList.contains("sopen");st.classList.toggle("sopen",o);if(o){body.style.maxHeight=body.scrollHeight+"px";body.addEventListener("transitionend",function te(){if(st.classList.contains("sopen"))body.style.maxHeight="none";body.removeEventListener("transitionend",te);});}else{body.style.maxHeight=body.scrollHeight+"px";requestAnimationFrame(function(){body.style.maxHeight="0";});}});
-    if(cls==="active"){st.classList.add("sopen");body.style.maxHeight="none";}
-    road.appendChild(st);
+    tbl.appendChild(tr);
   });
-  v.appendChild(road);
-  setTimeout(function(){var sp=v.querySelector(".spine");if(sp)sp.style.height=(road.scrollHeight-12)+"px";},250);
+  w.appendChild(tbl);
+  return w;
+}
+function scopeEditor(p){
+  var items=reqLines(p);
+  var w=el("div","qa");
+  var h=el("div","qa-h sh2");h.appendChild(el("span",null,"✏️ Edit scope"));h.appendChild(el("i","chev","▾"));
+  w.appendChild(h);
+  var body=el("div","sbody2");
+  if(!items.length){body.appendChild(el("div","qitem dim","No requirement list yet to edit."));}
+  else{
+    body.appendChild(el("div","ql","add or remove features — the factory re-plans the rest"));
+    var changes={add:[],rm:[]};
+    items.slice(0,40).forEach(function(it){
+      var row=el("div","ed");row.appendChild(el("span","lt",it.s));var x=el("span","x","✕");row.appendChild(x);
+      x.onclick=function(){if(row.classList.contains("rm")){row.classList.remove("rm");changes.rm=changes.rm.filter(function(z){return z!==it.s;});}else{row.classList.add("rm");changes.rm.push(it.s);}};
+      body.appendChild(row);
+    });
+    var add=el("div","edadd");var inp=document.createElement("input");inp.placeholder="add a feature…";var ab=el("button","btn bl","add");
+    ab.onclick=function(){if(inp.value.trim()){changes.add.push(inp.value.trim());var row=el("div","ed new");row.appendChild(el("span","lt",inp.value.trim()));body.insertBefore(row,add);inp.value="";}};
+    add.appendChild(inp);add.appendChild(ab);body.appendChild(add);
+    var ap=el("button","btn bl","Apply to build →");ap.style.margin="6px 0 2px";
+    ap.onclick=function(){if(!changes.add.length&&!changes.rm.length){alert("No changes to apply.");return;}sendReq(p.name,"scope","Scope edit. ADD: "+(changes.add.join("; ")||"none")+". REMOVE: "+(changes.rm.join("; ")||"none")+".");};
+    body.appendChild(ap);
+  }
+  w.appendChild(body);
+  h.addEventListener("click",function(){var o=!w.classList.contains("sopen2");w.classList.toggle("sopen2",o);setH(body,o);});
+  return w;
 }
 function render(){
+  // preserve scroll position + scroll inside the build/QA report panels across re-render
+  var sy=window.scrollY;
+  var scrolls=[].map.call(document.querySelectorAll(".qa-report"),function(e){return e.scrollTop;});
   var v=document.getElementById("view");v.textContent="";
   var m=location.hash.match(/^#p=(.+)$/);
   var p=m&&products.find(function(x){return x.name===decodeURIComponent(m[1]);});
   if(p)renderProduct(v,p);else renderGrid(v);
+  [].forEach.call(document.querySelectorAll(".qa-report"),function(e,i){if(scrolls[i]!=null)e.scrollTop=scrolls[i];});
+  window.scrollTo(0,sy);
 }
 window.addEventListener("hashchange",render);
-function tick(){fetch("data.json?_="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){if(d.uiVersion&&d.uiVersion!==DATA.uiVersion){location.reload();return;}products=d.products;last=Date.now();render();}).catch(function(){});}
+var lastSig="";
+function tick(){fetch("data.json?_="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+  if(d.uiVersion&&d.uiVersion!==DATA.uiVersion){location.reload();return;}
+  var sig=JSON.stringify(d.products);
+  last=Date.now();
+  if(sig===lastSig)return;      // nothing changed → no re-render, no flicker
+  lastSig=sig;products=d.products;render();
+}).catch(function(){});}
 if(location.protocol==="file:")setTimeout(function(){location.reload();},60000);else setInterval(tick,15000);
 setInterval(function(){document.getElementById("upd").textContent="updated "+Math.round((Date.now()-last)/1000)+"s ago";},1000);
 render();
