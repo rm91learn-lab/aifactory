@@ -735,7 +735,7 @@ http.createServer((req, res) => {
     }
     if (url === '/' || url === '/index.html') {
       freshDashboard();
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(fs.readFileSync(path.join(ROOT, 'dashboard', 'index.html')));
     } else if (url === '/data.json') {
       freshDashboard();

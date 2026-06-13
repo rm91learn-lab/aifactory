@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 12; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 13; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -522,12 +522,12 @@ function releaseStrip(p){
   var prod=el("div","relcard "+(p.health?(p.health.up?"ok":"bad"):""));
   prod.appendChild(el("div","rl2","Production"));
   prod.appendChild(el("div","rv",live?(p.health?(p.health.up?"● live · "+p.health.ms+"ms":"● DOWN"):"deployed"):"not deployed yet"));
-  if(live){var a=el("a","rurl",live.replace(/^https?:\/\//,""));a.href=live;a.target="_blank";prod.appendChild(a);}
+  if(live){var a=el("a","rurl",live.replace("https://","").replace("http://",""));a.href=live;a.target="_blank";prod.appendChild(a);}
   w.appendChild(prod);
   var st=el("div","relcard "+(p.staged?"stg":""));
   st.appendChild(el("div","rl2","Staging"));
   st.appendChild(el("div","rv",p.staged?"● awaiting QA / promotion":"nothing staged"));
-  if(p.staged){var a2=el("a","rurl",p.staged.replace(/^https?:\/\//,""));a2.href=p.staged;a2.target="_blank";st.appendChild(a2);}
+  if(p.staged){var a2=el("a","rurl",p.staged.replace("https://","").replace("http://",""));a2.href=p.staged;a2.target="_blank";st.appendChild(a2);}
   w.appendChild(st);
   return w;
 }
