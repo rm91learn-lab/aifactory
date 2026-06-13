@@ -38,3 +38,9 @@ API routes existing does NOT mean a module shipped. A module a user cannot reach
 - Produce a coverage table in QA-REPORT.md: every promised module × {reachable in UI? primary action works?}. ANY promised module that is missing from navigation, has no screen, or whose primary action fails ⇒ overall verdict FAIL.
 - Also verify the LIVE/staged version under test is the CURRENT build (not a stale deploy): the version's git SHA / build marker must match HEAD.
 - "Backend route exists but no UI" is the single most important failure to catch. Treat the product as a non-technical client would: if they can't see it and click it, it isn't done.
+
+## CODE HYGIENE & REMOVAL CHECK (gating)
+
+- **Dead code:** flag any function, file, endpoint, route, or config the change left UNREFERENCED as a finding. Code superseded by this change must have been deleted in this change — leftover orphans are a defect.
+- **Safe removal:** for anything this change REMOVED or decommissioned, verify nothing that depended on it regressed — no broken feature, screen, link, API, or flow (check via the showroom/browser pass, not by reading code alone). A removal that breaks any working path ⇒ FAIL.
+- A change is not clean just because the new feature works; it is clean when the old code it replaced is gone and nothing else broke.

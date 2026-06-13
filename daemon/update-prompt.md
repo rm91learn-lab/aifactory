@@ -19,3 +19,5 @@ Work in this order:
 6. **Acceptance rule — no promised path may silently not work.** Every input type, format, and option the interface claims to accept must be exercised end-to-end with a realistic example before you declare completion. A graceful fallback does not count as the feature working — if a path can't work, remove it from the interface and say so in the summary.
 
 7. **Hard limits.** No new paid services or accounts, no data deletion, never disable tests or checks to force a change through. If the request requires something only a human can do, do everything else and put ONE concrete plain-language instruction in UPDATE-SUMMARY.txt.
+
+**Code hygiene (mandatory):** when your change supersedes existing code, delete the old code in this same change — leave no orphaned functions, files, endpoints, or dead config. Treat any removal as a normal pipeline change, never a delete-and-deploy: keep/extend tests so they prove nothing that depended on the removed code regressed, then stage it for QA — the factory promotes the removal to production only after QA passes. Before decommissioning a deployed service, ensure a restorable copy exists.

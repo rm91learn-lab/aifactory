@@ -22,3 +22,5 @@ Work in this order:
 6. **Report plainly.** Update `UPDATE-SUMMARY.txt`: what changed, what else in the product had to change because of it (the ripples), and whether anything needs the founder.
 
 Hard limits: never delete user data without flagging; never remove shipped features that would break live users without saying so; added features still pass full QA before reaching production. No editing around the gates.
+
+**Code hygiene (mandatory):** when your change supersedes existing code, delete the old code in this same change — leave no orphaned functions, files, endpoints, or dead config. Treat any removal as a normal pipeline change, never a delete-and-deploy: keep/extend tests so they prove nothing that depended on the removed code regressed, then stage it for QA — the factory promotes the removal to production only after QA passes. Before decommissioning a deployed service, ensure a restorable copy exists.

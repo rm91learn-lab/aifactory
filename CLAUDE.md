@@ -31,6 +31,12 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 
 **Nothing reaches production without passing independent QA. Period.** Builder and update agents deploy to staging only (`DEPLOY-STAGED.json` records the preview URL and promote command); the daemon promotes to production exclusively after a QA PASS, then a 10-minute canary watches the live site and rolls back deterministically on failure. Incident agents stabilize by rolling back to the last QA-approved version — never by deploying new code. Toolkit self-upgrades are verified by `scripts/verify-kit.mjs` and auto-reverted if damaged. The only exception: a product's first-ever deployment (no users exist yet), which QA still gates before it is announced.
 
+## Code hygiene & safe decommission
+
+- **Supersede means delete.** When a change replaces existing code, remove the old code — functions, files, endpoints, config, dead branches — in the SAME change. No orphans left behind. Independent QA treats any unreferenced/dead code introduced by a change as a finding (FAIL-worthy if it's confusing or risks being mistaken for live).
+- **Removal is a change, not a `rm`.** Deleting or decommissioning anything follows the full pipeline, never delete-and-deploy: (1) prove nothing depended on it — tests + showroom QA confirm no feature, module, link, or flow regressed; (2) stage it; (3) the factory promotes the removal to production only after QA PASS, then the canary watches. A removal that breaks the canary rolls back like any other.
+- **Decommissioning a deployed service** (a retired product/worker): archive a restorable mirror first (`git clone --mirror` / keep the repo), confirm nothing else points at it, then tear it down — and record it in `docs/HANDOFFS.md` or `docs/SOURCES.md` as appropriate. Never destroy the only copy.
+
 ## Known seams (intentional substitutions)
 
 - Turbo's planning skills (`turboplan`, `draft-plan`, `draft-spec`, shells) were deliberately NOT imported — GSD owns planning. Where a turbo skill offers a "plan path" (e.g. `resolve-findings`), route it to `/gsd:plan-phase` instead of `/turboplan`.
