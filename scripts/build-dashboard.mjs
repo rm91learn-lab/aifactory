@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 8; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 9; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -170,6 +170,8 @@ export function collectProducts(root = ROOT) {
       runLabel: { build: 'building', change: 'applying change', qa: 'running QA', incident: 'fixing incident' }[a?.runKind] || (a?.runKind ? 'working' : null),
       requirements: read(path.join(planning, 'REQUIREMENTS.md')).trim().slice(0, 6000),
       assumptions: read(path.join(planning, 'ASSUMPTIONS.md')).replace(/^# .*\n+/,'').replace(/^Each entry.*\n+/m,'').trim().slice(0, 4000),
+      qaVerdict: read(path.join(dir, 'QA-VERDICT.txt')).trim().slice(0, 600),
+      qaReport: read(path.join(dir, 'QA-REPORT.md')).trim().slice(0, 24000),
     };
   });
 }
@@ -207,6 +209,16 @@ function html(products) {
   .ql{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7c8aa0;margin-bottom:4px}
   .qitem{font-size:13px;color:#c3cdda;padding:3px 0 3px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .qitem.b{color:#d29922}.qitem.dim{color:#56627a}
+  .qa{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;margin-bottom:16px}
+  .qa-h{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;margin-bottom:10px}
+  .qv{font-size:11px;padding:2px 10px;border-radius:20px}
+  .qv.pass{color:#3fb950;background:#0e1f14;border:0.5px solid #1f3d28}
+  .qv.fail{color:#f0716f;background:#1f1314;border:0.5px solid #5a2a2a}
+  .qv.run{color:#5b8cff;background:#101a2e;border:0.5px solid #2d4373}
+  .qa-live{background:#101a2e;border:0.5px solid #2d4373;border-radius:8px;padding:10px;margin-bottom:10px}
+  .qa-step{font-size:13px;color:#c3cdda;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qa-verdict{font-size:13px;color:#c3cdda;white-space:pre-wrap;margin-bottom:10px;padding:9px 11px;background:#0b1018;border-radius:8px}
+  .qa-report{max-height:360px;overflow-y:auto;font-family:ui-monospace,monospace;font-size:12px;color:#9aa6b8;white-space:pre-wrap;background:#0b1018;border:0.5px solid #1c2638;border-radius:8px;padding:12px;line-height:1.55}
   .pcard{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;cursor:pointer;transition:border-color .15s}
   .pcard:hover{border-color:#3a4straight;border-color:#34507f}
   .pc-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -402,6 +414,26 @@ function sendReq(product,kind,text){
     .then(function(r){return r.json();}).then(function(){alert("Sent to the factory. Watch this product's activity.");})
     .catch(function(){alert("Could not reach the factory daemon.");});
 }
+function qaPanel(p){
+  var qaRunning=p.building&&/qa/i.test(p.runLabel||"");
+  var w=el("div","qa");
+  var h=el("div","qa-h");h.appendChild(el("span",null,"🧪 QA — what's being validated"));
+  if(qaRunning)h.appendChild(el("span","qv run","● validating now"));
+  else if(p.qaVerdict){var pass=/^PASS/i.test(p.qaVerdict);h.appendChild(el("span","qv "+(pass?"pass":"fail"),pass?"PASS":"FAIL"));}
+  w.appendChild(h);
+  if(qaRunning){
+    var lq=el("div","qa-live");lq.appendChild(el("div","ql","validating now — live"));
+    var es=(p.activity&&p.activity.entries||[]).slice().reverse().slice(0,7);
+    if(es.length)es.forEach(function(e){lq.appendChild(el("div","qa-step",e.s));});
+    else lq.appendChild(el("div","qa-step","starting checks…"));
+    w.appendChild(lq);
+  }
+  if(p.qaVerdict)w.appendChild(el("div","qa-verdict",p.qaVerdict));
+  w.appendChild(el("div","ql","full QA history — every round, finding & expected result (scroll)"));
+  var rep=el("div","qa-report");rep.textContent=p.qaReport||"No QA report yet. QA runs after each build: it logs in as a real user, checks every promised module against the requirements, and records what it tested, the expected result, and pass/fail here.";
+  w.appendChild(rep);
+  return w;
+}
 function renderProduct(v,p){
   var back=el("span","back","← all products");back.onclick=function(){location.hash="";};v.appendChild(back);
   var h=el("div","dh");h.appendChild(el("span","nm",p.name));h.appendChild(badges(p));v.appendChild(h);
@@ -416,6 +448,7 @@ function renderProduct(v,p){
   var live=liveView(p);live.classList.remove("show");v.appendChild(live);
   wl.onclick=function(){live.classList.toggle("show");wl.classList.toggle("on");};
   if(p.building){live.classList.add("show");wl.classList.add("on");}
+  v.appendChild(qaPanel(p));
   // zig-zag roadmap
   var road=el("div","road");road.appendChild(el("div","spine"));
   var idx=stageIdx(p);
