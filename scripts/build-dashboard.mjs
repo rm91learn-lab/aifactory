@@ -363,21 +363,6 @@ function pcard(p){
   c.appendChild(el("div","pc-f",(p.pct||0)+"% · "+(p.lastCommit||"no activity")));
   return c;
 }
-function queuePanel(){
-  var fq=fqueue||{pending:[]};
-  var bnow=products.filter(function(p){return p.building;});
-  var w=el("div","qpanel");
-  w.appendChild(el("div","qh","Factory queue"));
-  var s1=el("div","qsec");s1.appendChild(el("div","ql","🔨 building now"));
-  if(bnow.length)bnow.forEach(function(p){var e=(p.activity&&p.activity.entries&&p.activity.entries.length)?p.activity.entries[p.activity.entries.length-1].s:"working";s1.appendChild(el("div","qitem b","● "+p.name+" — "+e));});
-  else s1.appendChild(el("div","qitem dim","nothing building right now"));
-  w.appendChild(s1);
-  var s2=el("div","qsec");s2.appendChild(el("div","ql","⏳ up next"));
-  if(fq.pending&&fq.pending.length)fq.pending.forEach(function(j){s2.appendChild(el("div","qitem","○ "+j.product+" — "+j.label));});
-  else s2.appendChild(el("div","qitem dim","queue empty — send an idea to add work"));
-  w.appendChild(s2);
-  return w;
-}
 function renderGrid(v){
   if(!products.length){v.appendChild(el("div","empty","No products yet — text an idea to your factory bot."));return;}
   var g=el("div","grid");products.forEach(function(p){g.appendChild(pcard(p));});v.appendChild(g);
