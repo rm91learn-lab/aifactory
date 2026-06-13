@@ -467,6 +467,28 @@ function refreshDashboard() {
 
 const gitIn = (cwd, ...args) => execFileP('git', ['-C', cwd, ...args]);
 
+// Self-heal: a daemon restart/crash mid-build orphans the agent, so the staged
+// result is never promoted. On boot, recover any product left with a staged
+// build: promote it if QA already passed, otherwise re-queue it to finish.
+function reconcileOnBoot() {
+  for (const name of listProducts()) {
+    if (running.has(name)) continue;
+    const dest = path.join(ROOT, 'products', name);
+    if (!fs.existsSync(path.join(dest, 'DEPLOY-STAGED.json'))) continue;
+    const verdict = readSummary(dest, 'QA-VERDICT.txt');
+    if (/^PASS/i.test(verdict)) {
+      log(`reconcile: ${name} has a QA-passed staged build never promoted — promoting`);
+      promoteStaged(name, dest).then(r => {
+        if (r.promoted) { startCanary(name, dest, CONFIG.allowedChatIds[0]); for (const c of CONFIG.allowedChatIds) send(c, `🔧 Recovered a finished build of "${name}" that a restart had stranded — now promoted to production.`); }
+      }).catch(err => log(`reconcile promote failed for ${name}:`, err.message));
+    } else {
+      log(`reconcile: ${name} has an unpromoted staged build — re-queuing to finish`);
+      state.queue.push({ type: 'update', product: name, chatId: CONFIG.allowedChatIds[0], idea: 'A staged build from a previous session was left unfinished by a restart. Verify it, resolve any remaining QA findings, re-stage, and let the factory promote on QA pass.' });
+      saveState(); pump();
+    }
+  }
+}
+
 // --- production protection: staged promotion, canary, deterministic rollback --
 async function quickCheck(dest) {
   try {
@@ -696,7 +718,11 @@ const DASH_PORT = CONFIG.dashboardPort || 7717;
 // Set daemon/.env DASHBOARD_VIEW_PASSWORD (user "factory"); no password = localhost-only, open.
 const VIEW_PW = process.env.DASHBOARD_VIEW_PASSWORD || '';
 function dashAuthed(req) {
-  if (!VIEW_PW) return true; // unset → no gate (localhost dev)
+  if (!VIEW_PW) return true; // no password set → open
+  // Direct access on the iMac (Host: localhost/127.0.0.1) needs no login; only
+  // the public tunnel (Host: *.trycloudflare.com etc.) requires the password.
+  const host = (req.headers['host'] || '').toLowerCase();
+  if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) return true;
   const h = req.headers['authorization'] || '';
   return h === 'Basic ' + Buffer.from('factory:' + VIEW_PW).toString('base64');
 }
@@ -773,6 +799,7 @@ startTunnel();
 log(`factory daemon up — owner=${CONFIG.githubOwner}, concurrency=${CONFIG.concurrency}, allowed chats: ${CONFIG.allowedChatIds.join(', ') || '(none yet — send /start to your bot to get your chat id)'}`);
 refreshDashboard();
 pump(); // resume any queue persisted across restarts
+reconcileOnBoot(); // self-heal: pick up builds stranded by a previous restart/crash
 runMonitor();
 setInterval(runMonitor, MON.intervalSeconds * 1000);
 // While any agent is working, keep the dashboard (and its cloud copy) fresh so
