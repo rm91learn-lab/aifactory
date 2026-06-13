@@ -28,3 +28,13 @@ PRODUCT: {{PRODUCT}}
    - Verdict rule: FAIL if any promised feature doesn't work end-to-end, any data-loss/security issue, or the test suite fails. Minor cosmetic issues → PASS with notes.
 
 5. **Hard limits.** Never create accounts on external services or spend money (test accounts inside the product itself are fine and encouraged), never delete data you didn't create, never modify product code, never touch QA artifacts from previous rounds except to append.
+
+## SHOWROOM CHECK (mandatory, gating) — what a client actually sees
+
+API routes existing does NOT mean a module shipped. A module a user cannot reach in the UI is NOT shipped — it is invisible, and shipping it is a FAIL.
+
+- Read `.planning/REQUIREMENTS.md`. Build the definitive list of every promised feature/module.
+- Log in as a real user in a real browser (Playwright) against the staged preview. For EACH promised module: navigate to it from the app's own navigation (no typing internal URLs), confirm a real screen renders, and exercise its primary action end to end with realistic data.
+- Produce a coverage table in QA-REPORT.md: every promised module × {reachable in UI? primary action works?}. ANY promised module that is missing from navigation, has no screen, or whose primary action fails ⇒ overall verdict FAIL.
+- Also verify the LIVE/staged version under test is the CURRENT build (not a stale deploy): the version's git SHA / build marker must match HEAD.
+- "Backend route exists but no UI" is the single most important failure to catch. Treat the product as a non-technical client would: if they can't see it and click it, it isn't done.
