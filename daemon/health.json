@@ -1,17 +1,29 @@
 {
-  "checkedAt": "2026-06-12T19:41:48.324Z",
+  "checkedAt": "2026-06-13T06:59:54.214Z",
   "products": {
+    "factory-console": {
+      "url": "https://factory-console.rm91-learn.workers.dev/api/health",
+      "platform": "cloudflare-workers",
+      "up": true,
+      "httpStatus": 200,
+      "ms": 385,
+      "fails": 0,
+      "alerted": false,
+      "downSince": null,
+      "lastIncidentAt": null,
+      "checkedAt": "2026-06-13T06:59:53.809Z"
+    },
     "hrms-app": {
       "url": "https://hrms-app.rm91-learn.workers.dev/api/health",
       "platform": "cloudflare",
       "up": true,
       "httpStatus": 200,
-      "ms": 867,
+      "ms": 404,
       "fails": 0,
       "alerted": false,
       "downSince": null,
       "lastIncidentAt": null,
-      "checkedAt": "2026-06-12T19:41:48.324Z"
+      "checkedAt": "2026-06-13T06:59:54.214Z"
     }
   }
 }
