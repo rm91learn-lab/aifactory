@@ -1,11 +1,11 @@
 {
   "comment": "Skill sources vendored into the factory. 'pinned' = the commit we imported. The daemon checks these daily; /upgrade re-imports per docs/SOURCES.md recipes.",
   "sources": [
-    { "name": "gsd-core", "repo": "open-gsd/gsd-core", "pinned": "3e836fe", "watch": "commands/ agents/ gsd-core/" },
+    { "name": "gsd-core", "repo": "open-gsd/gsd-core", "pinned": "f116b76", "watch": "commands/ agents/ gsd-core/" },
     { "name": "superpowers", "repo": "obra/superpowers", "pinned": "6fd4507", "watch": "skills/" },
     { "name": "turbo", "repo": "tobihagemann/turbo", "pinned": "e5e55de", "watch": "claude/skills/" },
-    { "name": "gstack", "repo": "garrytan/gstack", "pinned": "a5833c4", "watch": "imported 13 skills" },
+    { "name": "gstack", "repo": "garrytan/gstack", "pinned": "14fc086", "watch": "imported 13 skills" },
     { "name": "qa-playbooks", "repo": "fugazi/test-automation-skills-agents", "pinned": "e32b29e", "watch": "skills/" },
-    { "name": "qa-references", "repo": "PramodDutta/qaskills", "pinned": "3ac9e18", "watch": "seed-skills/ (3 imported)" }
+    { "name": "qa-references", "repo": "PramodDutta/qaskills", "pinned": "e466b92", "watch": "seed-skills/ (3 imported)" }
   ]
 }

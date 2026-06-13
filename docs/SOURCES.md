@@ -5,7 +5,7 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 ## Imported
 
 ### open-gsd/gsd-core — orchestration spine
-- **Commit:** `3e836fe` (2026-06-12) · MIT · https://github.com/open-gsd/gsd-core
+- **Commit:** `f116b76` (2026-06-13) · MIT · https://github.com/open-gsd/gsd-core
 - **Why:** The most actively maintained spec-driven SDLC orchestrator for Claude Code (successor to get-shit-done). Phase loop (discuss → plan → execute → verify), wave-based parallel subagent execution, autonomous mode, file-based state in `.planning/`.
 - **Imported:** `commands/gsd/` → `.claude/commands/gsd/` (69 commands); `agents/` → `.claude/agents/` (33 agents); `gsd-core/{workflows,references,templates,contexts}` → `.claude/gsd-core/`.
 - **Modified:** all `@~/.claude/gsd-core/...` and `$HOME/.claude/gsd-core/...` references rewritten to project-local `.claude/gsd-core/...` (what the official installer does for `--local` installs).
@@ -26,7 +26,7 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 - **Excluded (24):** all 11 planning skills + turboplan + implement + implement-improvements (GSD owns planning; `resolve-findings` plan-path routes to `/gsd:plan-phase`), onboard, map-codebase (GSD has `/gsd:map-codebase`), explain-this, understand-change (tutoring, not factory).
 
 ### garrytan/gstack — product, plan review & design layer
-- **Commit:** `a5833c4` (2026-06-10, v1.57.10.0) · MIT · https://github.com/garrytan/gstack
+- **Commit:** `14fc086` (2026-06-13, v1.58.0.0) · MIT · https://github.com/garrytan/gstack
 - **Why:** Fills the dimensions the other imports lack entirely: multi-persona plan review (CEO/eng/design/DX with an auto-pipeline), design-system creation and visual QA, OWASP/STRIDE security mode, documentation generation, product strategy interrogation.
 - **Imported (13):** plan-ceo-review, plan-eng-review, plan-design-review, plan-devex-review, autoplan (orchestrates all four), design-consultation, design-review, design-html, cso, document-generate, document-release, health, office-hours → `.claude/skills/`. Plus shared data: `scripts/jargon-list.json` → `.claude/skills/gstack-shared/`.
 - **Modified:** cross-skill references (`~/.claude/skills/gstack/<skill>/...`) rewritten to project-local `.claude/skills/<skill>/...`; `SKILL.md.tmpl` template sources removed. Preamble calls to `~/.claude/skills/gstack/bin/*` left intact ON PURPOSE — every call carries `|| true`/default fallbacks, so skills get full telemetry/config/learnings features on machines with a global gstack install and degrade silently elsewhere. Same for the optional browse daemon (`design-review`).
