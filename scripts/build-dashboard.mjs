@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 9; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 10; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -166,7 +166,8 @@ export function collectProducts(root = ROOT) {
       commits: Number(git(dir, 'rev-list', '--count', 'HEAD')) || 0,
       stage: !hasPlanning && !tasks.length ? 'scaffolded' : pctFinal >= 100 ? 'ready' : (board.length || tasks.length) ? 'in progress' : 'planning',
       health: h ? { up: h.up, ms: h.ms, url: h.url, downSince: h.downSince } : null,
-      activity: a ? { updatedAt: a.updatedAt, counts: a.counts, entries: (a.entries || []).slice(-15) } : null,
+      activity: a ? { updatedAt: a.updatedAt, counts: a.counts, entries: (a.entries || []).slice(-40) } : null,
+      commitLog: git(dir, 'log', '--format=%cr · %s', '-40').slice(0, 4000),
       runLabel: { build: 'building', change: 'applying change', qa: 'running QA', incident: 'fixing incident' }[a?.runKind] || (a?.runKind ? 'working' : null),
       requirements: read(path.join(planning, 'REQUIREMENTS.md')).trim().slice(0, 6000),
       assumptions: read(path.join(planning, 'ASSUMPTIONS.md')).replace(/^# .*\n+/,'').replace(/^Each entry.*\n+/m,'').trim().slice(0, 4000),
@@ -219,6 +220,9 @@ function html(products) {
   .qa-step{font-size:13px;color:#c3cdda;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .qa-verdict{font-size:13px;color:#c3cdda;white-space:pre-wrap;margin-bottom:10px;padding:9px 11px;background:#0b1018;border-radius:8px}
   .qa-report{max-height:360px;overflow-y:auto;font-family:ui-monospace,monospace;font-size:12px;color:#9aa6b8;white-space:pre-wrap;background:#0b1018;border:0.5px solid #1c2638;border-radius:8px;padding:12px;line-height:1.55}
+  .windows{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+  .windows .qa{margin-bottom:0}
+  @media(max-width:760px){.windows{grid-template-columns:1fr}}
   .pcard{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;cursor:pointer;transition:border-color .15s}
   .pcard:hover{border-color:#3a4straight;border-color:#34507f}
   .pc-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -375,7 +379,6 @@ function queuePanel(){
   return w;
 }
 function renderGrid(v){
-  v.appendChild(queuePanel());
   if(!products.length){v.appendChild(el("div","empty","No products yet — text an idea to your factory bot."));return;}
   var g=el("div","grid");products.forEach(function(p){g.appendChild(pcard(p));});v.appendChild(g);
 }
@@ -414,6 +417,27 @@ function sendReq(product,kind,text){
     .then(function(r){return r.json();}).then(function(){alert("Sent to the factory. Watch this product's activity.");})
     .catch(function(){alert("Could not reach the factory daemon.");});
 }
+function buildPanel(p){
+  var building=p.building&&!/qa/i.test(p.runLabel||"");
+  var w=el("div","qa");
+  var h=el("div","qa-h");h.appendChild(el("span",null,"🔨 Build activity"));
+  if(building)h.appendChild(el("span","qv run","● building now"));
+  w.appendChild(h);
+  if(p.building){
+    var lq=el("div","qa-live");lq.appendChild(el("div","ql","working now — live"));
+    var es=(p.activity&&p.activity.entries||[]).slice().reverse().slice(0,7);
+    if(es.length)es.forEach(function(e){lq.appendChild(el("div","qa-step",e.s));});
+    else lq.appendChild(el("div","qa-step","starting…"));
+    w.appendChild(lq);
+  }
+  w.appendChild(el("div","ql","build history — every step & decision (scroll)"));
+  var rep=el("div","qa-report");var hist="";
+  (p.activity&&p.activity.entries||[]).slice().reverse().forEach(function(e){hist+="• "+e.s+"\\n";});
+  if(p.commitLog)hist+="\\n—— committed milestones ——\\n"+p.commitLog;
+  rep.textContent=hist||"No build activity recorded yet.";
+  w.appendChild(rep);
+  return w;
+}
 function qaPanel(p){
   var qaRunning=p.building&&/qa/i.test(p.runLabel||"");
   var w=el("div","qa");
@@ -448,7 +472,7 @@ function renderProduct(v,p){
   var live=liveView(p);live.classList.remove("show");v.appendChild(live);
   wl.onclick=function(){live.classList.toggle("show");wl.classList.toggle("on");};
   if(p.building){live.classList.add("show");wl.classList.add("on");}
-  v.appendChild(qaPanel(p));
+  var windows=el("div","windows");windows.appendChild(buildPanel(p));windows.appendChild(qaPanel(p));v.appendChild(windows);
   // zig-zag roadmap
   var road=el("div","road");road.appendChild(el("div","spine"));
   var idx=stageIdx(p);
