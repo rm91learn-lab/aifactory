@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 13; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 14; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -169,6 +169,19 @@ export function collectProducts(root = ROOT) {
       assumptions: read(path.join(planning, 'ASSUMPTIONS.md')).replace(/^# .*\n+/,'').replace(/^Each entry.*\n+/m,'').trim().slice(0, 4000),
       qaVerdict: read(path.join(dir, 'QA-VERDICT.txt')).trim().slice(0, 600),
       qaReport: read(path.join(dir, 'QA-REPORT.md')).trim().slice(0, 24000),
+      has: {
+        strategy: fs.existsSync(path.join(dir, 'STRATEGY.md')),
+        prd: fs.existsSync(path.join(dir, 'PRD.md')),
+        design: fs.existsSync(path.join(dir, 'design')),
+        designSkip: fs.existsSync(path.join(dir, 'DESIGN-SKIP.txt')),
+      },
+      gate: (() => {
+        const g = readJson(path.join(dir, '.gate.json'));
+        if (!g?.stage) return null;
+        const f = { strategy: 'STRATEGY-SUMMARY.txt', prd: 'PRD-SUMMARY.txt', design: 'DESIGN-SUMMARY.txt' }[g.stage];
+        return { stage: g.stage, summary: (f ? read(path.join(dir, f)) : '').trim().slice(0, 2000) };
+      })(),
+      docs: read(path.join(dir, 'DOCS.txt')).trim().split('\n')[0].slice(0, 300),
     };
   });
 }
@@ -331,21 +344,65 @@ function html(products) {
   .edadd input{flex:1;background:#0b1018;border:0.5px solid #2b3650;border-radius:8px;color:#e6edf3;font-size:13px;padding:7px 10px;outline:none}
   .empty{color:#56627a;text-align:center;padding:70px 0}
   @container (max-width:520px){.stage{grid-template-columns:44px 1fr}.spine{left:22px}.node{grid-column:1}.stage .scard,.stage:nth-child(odd) .scard,.stage:nth-child(even) .scard{grid-column:2}}
+  .bdg.gate{color:#e8c061;border-color:#7a5c1a;background:#1c1606}
+  .kill{margin-left:auto;color:#56627a;cursor:pointer;font-size:16px;border:0;background:transparent;padding:2px 7px;border-radius:6px;line-height:1}
+  .kill:hover{color:#f0716f;background:#1f1314}
+  .appr{background:#171206;border:0.5px solid #7a5c1a;border-radius:12px;padding:13px 15px;margin:4px 0 12px}
+  .appr-h{font-size:13px;font-weight:600;color:#e8c061;margin-bottom:6px}
+  .appr-s{font-size:12.5px;color:#c3cdda;white-space:pre-wrap;max-height:160px;overflow:auto;background:#0b1018;border-radius:8px;padding:9px 11px;margin:8px 0;line-height:1.5}
+  .appr-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .fab{position:fixed;right:20px;bottom:20px;z-index:40;height:52px;border-radius:26px;border:0;background:#5b8cff;color:#fff;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.45);padding:0 20px;display:flex;align-items:center;gap:8px}
+  .fab.hide{display:none}
+  .drawer{position:fixed;right:0;top:0;bottom:0;width:410px;max-width:100vw;z-index:50;background:#0b0f18;border-left:0.5px solid #232f47;display:flex;flex-direction:column;transform:translateX(102%);transition:transform .25s;box-shadow:-8px 0 30px rgba(0,0,0,.4)}
+  .drawer.open{transform:none}
+  .dwh{display:flex;align-items:center;gap:10px;padding:15px 16px;border-bottom:0.5px solid #1c2638}
+  .dwh b{font-size:15px;flex:1}
+  .dwh .cl{cursor:pointer;color:#7c8aa0;font-size:22px;line-height:1}
+  .msgs{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:86%;padding:9px 12px;border-radius:13px;font-size:13.5px;white-space:pre-wrap;line-height:1.5;word-break:break-word}
+  .msg.f{background:#141b29;border:0.5px solid #232f47;align-self:flex-start;border-bottom-left-radius:3px}
+  .msg.u{background:#1b3a6b;color:#eaf1ff;align-self:flex-end;border-bottom-right-radius:3px}
+  .msg.sys{align-self:center;background:transparent;color:#56627a;font-size:12px;padding:2px}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;padding:0 16px 8px}
+  .chip{font-size:12.5px;border:0.5px solid #34507f;background:#101a2e;color:#9fc0ff;border-radius:16px;padding:6px 12px;cursor:pointer}
+  .chip:hover{background:#16243d}
+  .cin{display:flex;gap:8px;padding:12px 14px;border-top:0.5px solid #1c2638}
+  .cin textarea{flex:1;resize:none;background:#0f1623;border:0.5px solid #2b3650;border-radius:10px;color:#e6edf3;font:14px/1.4 -apple-system,'Segoe UI',Roboto,sans-serif;padding:9px 11px;outline:none;max-height:120px}
+  .cin button{border:0;background:#5b8cff;color:#fff;border-radius:10px;padding:0 16px;font-size:14px;cursor:pointer}
+  @media(max-width:480px){.drawer{width:100vw}.fab{right:14px;bottom:14px}}
 </style></head><body>
 <header><h1 onclick="location.hash=''" style="cursor:pointer">AI-Factory</h1><span id="upd"></span></header>
 <div id="view"></div>
+<button class="fab" id="fab">💬 Factory chat</button>
+<div class="drawer" id="drawer">
+  <div class="dwh"><b>Factory chat</b><span class="cl" id="chatcl">✕</span></div>
+  <div class="msgs" id="msgs"></div>
+  <div class="chips" id="chips"></div>
+  <div class="cin"><textarea id="cinp" rows="1" placeholder="Describe a product to build, or ask a question…"></textarea><button id="csend">Send</button></div>
+</div>
 <script>
 var DATA=${data},products=DATA.products,last=Date.now();
-var ST=["Capture","Plan","Design","Build","QA","Release","Operate","Evolve"];
+var ST=["Idea","Strategy","PRD","Design","Build","QA","Live"];
+var GATE_IDX={strategy:1,prd:2,design:3};
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
 function esc(s){return String(s==null?"":s);}
 function ago(t){var s=Math.max(0,Math.round((Date.now()-new Date(t).getTime())/1000));return s<90?s+"s":s<5400?Math.round(s/60)+"m":Math.round(s/3600)+"h";}
 function stageIdx(p){
-  if(p.health&&!p.health.up)return 6;
-  if(p.building)return /qa/i.test(p.runLabel||"")?4:3;
-  if(p.pct>=100)return 6;
-  if((p.board&&p.board.length)||(p.tasks&&p.tasks.length))return 3;
-  if(p.requirements)return 1;
+  if(p.gate)return GATE_IDX[p.gate.stage]||0;
+  var rl=p.runLabel||"";
+  if(p.building){
+    if(/strateg/i.test(rl))return 1;
+    if(/PRD/i.test(rl))return 2;
+    if(/design/i.test(rl))return 3;
+    if(/QA/i.test(rl))return 5;
+    return 4;
+  }
+  if((p.health&&p.health.url)||p.deployUrl)return 6;
+  if(p.staged||p.qaVerdict)return 5;
+  if((p.board&&p.board.length)||(p.tasks&&p.tasks.length))return 4;
+  if(p.has&&(p.has.design||p.has.designSkip))return 3;
+  if(p.has&&p.has.prd)return 2;
+  if(p.has&&p.has.strategy)return 1;
   return 0;
 }
 function rail(p,big){
@@ -367,15 +424,44 @@ function rail(p,big){
 }
 function badges(p){
   var f=document.createDocumentFragment();
+  if(p.gate)f.appendChild(el("span","bdg gate","⏳ approve "+p.gate.stage));
   if(p.building)f.appendChild(el("span","bdg build","● "+(p.runLabel||"working")));
-  else f.appendChild(el("span","bdg"+(p.stage==="ready"?" ready":""),p.stage+(p.version?" · v"+p.version:"")));
+  else if(!p.gate)f.appendChild(el("span","bdg"+(p.stage==="ready"?" ready":""),p.stage+(p.version?" · v"+p.version:"")));
   if(p.health)f.appendChild(el("span","bdg "+(p.health.up?"live":"down"),p.health.up?"● live · "+p.health.ms+"ms":"● DOWN"));
   return f;
 }
+function approveAct(name,decision,feedback){
+  fetch("/approve",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({product:name,decision:decision,feedback:feedback})})
+    .then(function(r){return r.json();}).then(function(r){if(r&&r.ok===false)alert(r.message||"Could not apply that.");else tick();})
+    .catch(function(){alert("Could not reach the factory daemon.");});
+}
+function killAct(name){
+  if(!confirm("Remove \\""+name+"\\" from the factory?\\n\\nThis archives a restorable copy, keeps the GitHub repo, and deletes the local workspace and its card. Any running work for it stops."))return;
+  fetch("/kill",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({product:name})})
+    .then(function(r){return r.json();}).then(function(r){if(r&&r.ok===false)alert(r.message||"Could not remove it.");else{if(location.hash)location.hash="";tick();}})
+    .catch(function(){alert("Could not reach the factory daemon.");});
+}
+function approvalBanner(p){
+  if(!p.gate)return null;
+  var names={strategy:"Strategy",prd:"PRD — Product Requirements",design:"Design / wireframes"};
+  var w=el("div","appr");
+  w.appendChild(el("div","appr-h","⏳ Awaiting your approval — "+(names[p.gate.stage]||p.gate.stage)));
+  if(p.gate.stage==="design"){var a=el("a","btn bl","🎨 View wireframes");a.href="/preview/"+encodeURIComponent(p.name)+"/";a.target="_blank";a.onclick=function(e){e.stopPropagation();};w.appendChild(a);}
+  if(p.gate.summary)w.appendChild(el("div","appr-s",p.gate.summary));
+  var row=el("div","appr-row");
+  var ap=el("button","btn go","✅ Approve & continue");ap.onclick=function(e){e.stopPropagation();approveAct(p.name,"approve");};
+  var rv=el("button","btn bl","✏️ Request changes");rv.onclick=function(e){e.stopPropagation();var t=prompt("What should change in the "+p.gate.stage+"?");if(t)approveAct(p.name,"revise",t);};
+  var cn=el("button","btn","✕ Cancel");cn.onclick=function(e){e.stopPropagation();if(confirm("Cancel \\""+p.name+"\\" at the "+p.gate.stage+" stage?"))approveAct(p.name,"cancel");};
+  row.appendChild(ap);row.appendChild(rv);row.appendChild(cn);w.appendChild(row);
+  return w;
+}
 function pcard(p){
   var c=el("div","pcard");c.onclick=function(){location.hash="#p="+encodeURIComponent(p.name);};
-  var h=el("div","pc-h");h.appendChild(el("span","nm",p.name));h.appendChild(badges(p));c.appendChild(h);
+  var h=el("div","pc-h");h.appendChild(el("span","nm",p.name));h.appendChild(badges(p));
+  var k=el("button","kill","🗑");k.title="Remove product";k.onclick=function(e){e.stopPropagation();killAct(p.name);};h.appendChild(k);
+  c.appendChild(h);
   c.appendChild(rail(p,false));
+  var ab=approvalBanner(p);if(ab)c.appendChild(ab);
   var ct=el("div","ctr");var cn=(p.activity&&p.activity.counts)||{};
   function kpi(l,v){var d=el("div");d.appendChild(el("b",null,String(v)));d.appendChild(document.createTextNode(l));return d;}
   ct.appendChild(kpi(" files",cn.writes||0));
@@ -459,12 +545,17 @@ function renderProduct(v,p){
   var back=el("span","back","← all products");back.onclick=function(){location.hash="";};v.appendChild(back);
   var h=el("div","dh");h.appendChild(el("span","nm",p.name));h.appendChild(badges(p));v.appendChild(h);
   v.appendChild(el("div","sub",(p.pct||0)+"% · "+(p.stateLine||p.stage||"")));
+  // lifecycle status (always visible): Idea → Strategy → PRD → Design → Build → QA → Live
+  var lc=el("div","live show");lc.appendChild(rail(p,true));v.appendChild(lc);
+  var ab=approvalBanner(p);if(ab)v.appendChild(ab);
   var acts=el("div","acts");
   var demo=(p.health&&p.health.url)||p.deployUrl;
   if(demo){var a=el("a","btn go","▶ open demo");a.href=demo;a.target="_blank";acts.appendChild(a);}
   if(p.repoUrl){var rp=el("a","btn","code");rp.href=p.repoUrl;rp.target="_blank";acts.appendChild(rp);}
+  if(p.docs&&/^https?:/.test(p.docs)){var dc=el("a","btn","📄 docs");dc.href=p.docs;dc.target="_blank";acts.appendChild(dc);}
   var wl=el("button","btn bl","⚡ watch live");acts.appendChild(wl);
   var rc=el("button","btn bl","＋ request a change");rc.onclick=function(){var t=prompt("Describe the change or bug for "+p.name+":");if(t)sendReq(p.name,"change",t);};acts.appendChild(rc);
+  var rm=el("button","btn","🗑 remove");rm.onclick=function(){killAct(p.name);};acts.appendChild(rm);
   v.appendChild(acts);
   var live=liveView(p);live.classList.remove("show");v.appendChild(live);
   wl.onclick=function(){live.classList.toggle("show");wl.classList.toggle("on");};
@@ -579,6 +670,48 @@ function tick(){fetch("data.json?_="+Date.now(),{cache:"no-store"}).then(functio
 }).catch(function(){});}
 if(location.protocol==="file:")setTimeout(function(){location.reload();},60000);else setInterval(tick,15000);
 setInterval(function(){document.getElementById("upd").textContent="updated "+Math.round((Date.now()-last)/1000)+"s ago";},1000);
+// ---- factory chat drawer ----
+var CHAT_KEY="factoryChat_v1",CHAT_ID_KEY="factoryChatLastId_v1";
+var chatLog=[];try{chatLog=JSON.parse(localStorage.getItem(CHAT_KEY)||"[]");}catch(e){}
+var chatLastId=Number(localStorage.getItem(CHAT_ID_KEY)||0);
+var chatOpen=false,chatUnread=false;
+var fab=document.getElementById("fab"),drawer=document.getElementById("drawer"),msgsEl=document.getElementById("msgs"),chipsEl=document.getElementById("chips"),cinp=document.getElementById("cinp");
+function saveChat(){try{localStorage.setItem(CHAT_KEY,JSON.stringify(chatLog.slice(-200)));localStorage.setItem(CHAT_ID_KEY,String(chatLastId));}catch(e){}}
+function renderChat(){
+  msgsEl.textContent="";
+  if(!chatLog.length)msgsEl.appendChild(el("div","msg sys","Tell the factory what to build. Every product passes Strategy → PRD → Design approvals before any code is written."));
+  chatLog.forEach(function(m){msgsEl.appendChild(el("div","msg "+(m.role==="u"?"u":"f"),m.text));});
+  msgsEl.scrollTop=msgsEl.scrollHeight;
+  chipsEl.textContent="";
+  var lastF=null;for(var i=chatLog.length-1;i>=0;i--){if(chatLog[i].role!=="u"){lastF=chatLog[i];break;}}
+  if(lastF&&lastF.buttons&&lastF.buttons.length)lastF.buttons.forEach(function(b){var c=el("div","chip",b);c.onclick=function(){sendChat(b);};chipsEl.appendChild(c);});
+}
+function updateFab(){fab.textContent=chatUnread?"💬 Factory chat ●":"💬 Factory chat";}
+function openChat(){chatOpen=true;chatUnread=false;drawer.classList.add("open");fab.classList.add("hide");renderChat();cinp.focus();}
+function closeChat(){chatOpen=false;drawer.classList.remove("open");fab.classList.remove("hide");updateFab();}
+function sendChat(text){
+  text=String(text||"").trim();if(!text)return;
+  chatLog.push({role:"u",text:text});saveChat();renderChat();
+  fetch("/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({message:text})})
+    .then(function(){setTimeout(pollChat,400);})
+    .catch(function(){chatLog.push({text:"⚠️ Could not reach the factory daemon."});saveChat();renderChat();});
+}
+function pollChat(){
+  fetch("/chat/poll?since="+chatLastId,{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+    if(!d)return;
+    if(d.lastId<chatLastId){chatLastId=0;saveChat();return pollChat();} // daemon restarted → seq reset
+    if(d.messages&&d.messages.length){
+      d.messages.forEach(function(m){chatLog.push({text:m.text,buttons:m.buttons});});
+      chatLastId=d.lastId;saveChat();
+      if(chatOpen)renderChat();else{chatUnread=true;updateFab();}
+    }
+  }).catch(function(){});
+}
+fab.onclick=openChat;document.getElementById("chatcl").onclick=closeChat;
+document.getElementById("csend").onclick=function(){sendChat(cinp.value);cinp.value="";cinp.style.height="auto";};
+cinp.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat(cinp.value);cinp.value="";cinp.style.height="auto";}});
+cinp.addEventListener("input",function(){cinp.style.height="auto";cinp.style.height=Math.min(cinp.scrollHeight,120)+"px";});
+updateFab();setInterval(pollChat,3000);pollChat();
 render();
 </script>
 </body></html>`;

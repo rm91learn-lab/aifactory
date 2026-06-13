@@ -73,6 +73,20 @@ const warnedChats = new Set();
 const pendingIdeas = new Map(); // chatId -> message text awaiting new-vs-update routing
 const pendingApproval = new Map(); // chatId -> {stage,slug,dest,idea,repoUrl} awaiting a human gate (strategy → prd → design)
 
+// --- web chat channel: the factory console talks to the daemon through a
+// virtual chat id, reusing the exact same gated pipeline as Telegram. Outbound
+// messages to this id are captured into webOutbox instead of sent to Telegram;
+// the browser polls /chat/poll for them. ---
+const WEB_CHAT_ID = '__web__';
+const webOutbox = []; // { id, text, buttons:[...], ts }
+let webSeq = 0;
+function pushWeb(text, replyMarkup) {
+  const rows = replyMarkup?.keyboard || replyMarkup?.inline_keyboard || [];
+  const buttons = rows.flat().map(b => (typeof b === 'string' ? b : b.text)).filter(Boolean);
+  webOutbox.push({ id: ++webSeq, text: String(text), buttons, ts: Date.now() });
+  if (webOutbox.length > 500) webOutbox.splice(0, webOutbox.length - 500);
+}
+
 function listProducts() {
   try {
     return fs.readdirSync(path.join(ROOT, 'products'), { withFileTypes: true })
@@ -146,6 +160,11 @@ function log(...args) {
 }
 
 async function tg(method, params) {
+  // Web console channel: capture the message for the browser instead of Telegram.
+  if (method === 'sendMessage' && params && params.chat_id === WEB_CHAT_ID) {
+    pushWeb(params.text, params.reply_markup);
+    return { ok: true };
+  }
   try {
     const res = await fetch(`${API}/${method}`, {
       method: 'POST',
@@ -431,8 +450,20 @@ function spawnGated(stage, slug, dest, chatId, idea, repoUrl, prompt, logName, c
   });
 }
 
+// Gate marker on disk — lets the dashboard show "awaiting your approval" per
+// product and lets approvals survive a daemon restart (reconcileOnBoot rebuilds
+// pendingApproval from these).
+function setGate(dest, stage, chatId) {
+  try { fs.writeFileSync(path.join(dest, '.gate.json'), JSON.stringify({ stage, chatId })); } catch {}
+}
+function clearGate(dest) {
+  try { fs.rmSync(path.join(dest, '.gate.json'), { force: true }); } catch {}
+}
+
 async function presentApproval(stage, slug, dest, chatId, idea, repoUrl, headline, body) {
   pendingApproval.set(chatId, { stage, slug, dest, idea, repoUrl });
+  setGate(dest, stage, chatId);
+  refreshDashboard();
   await tg('sendMessage', {
     chat_id: chatId,
     text: `${headline}\n\n${String(body).slice(0, 3200)}\n\n✅ Approve to continue · type any changes to revise · ❌ Cancel`,
@@ -481,6 +512,7 @@ async function handleApproval(chatId, text) {
   if (!a) return;
   const t = text.trim();
   const { stage, slug, dest, idea, repoUrl } = a;
+  clearGate(dest);
   if (/^✅|^approve|^yes\b|^go\b|^build|^continue/i.test(t)) {
     pendingApproval.delete(chatId);
     if (stage === 'strategy') { await send(chatId, `Approved. Writing the PRD for "${slug}" next.`); runPRD(slug, dest, chatId, idea, repoUrl); }
@@ -496,6 +528,75 @@ async function handleApproval(chatId, text) {
     else if (stage === 'prd') runPRD(slug, dest, chatId, idea, repoUrl, t);
     else if (stage === 'design') runDesign(slug, dest, chatId, idea, repoUrl, t);
   }
+}
+
+// Web console chat → the exact same pipeline as Telegram; replies are captured
+// into webOutbox by tg() and polled by the browser.
+async function handleWebChat(text) {
+  text = String(text || '').trim();
+  if (!text) return;
+  const id = WEB_CHAT_ID;
+  if (/^\/?status\b/i.test(text)) { await send(id, statusText(ROOT)); return; }
+  if (/^\/?health\b/i.test(text)) { await send(id, healthText(ROOT)); return; }
+  if (/^\/?(cancel|stop)\b/i.test(text)) {
+    const queued = state.queue.length;
+    state.queue = state.queue.filter(j => j.chatId !== id); saveState();
+    pendingIdeas.delete(id);
+    const a = pendingApproval.get(id); if (a) { clearGate(a.dest); pendingApproval.delete(id); }
+    const killed = [];
+    for (const [key, entry] of running) if (entry.chatId === id) { try { entry.child.kill('SIGTERM'); killed.push(key); } catch {} }
+    await send(id, (queued - state.queue.length) || killed.length ? `Stopped what I started from here (${killed.length} running, the rest of the queue is untouched).` : 'Nothing of yours was running or waiting.');
+    return;
+  }
+  if (pendingApproval.has(id)) { await handleApproval(id, text); return; }
+  await routeIdea(id, text);
+}
+
+// Approve/revise/cancel a product's current gate from the dashboard, regardless
+// of which channel started it (resolves the owning chat from the gate marker).
+async function approveProduct(slug, decision, feedback) {
+  const dest = path.join(ROOT, 'products', slug);
+  let gate = null; try { gate = JSON.parse(fs.readFileSync(path.join(dest, '.gate.json'), 'utf8')); } catch {}
+  if (!gate) return { ok: false, message: `"${slug}" is not awaiting approval right now.` };
+  const chatId = gate.chatId ?? WEB_CHAT_ID;
+  if (!pendingApproval.has(chatId)) { // rebuild after a restart
+    let idea = ''; try { idea = fs.readFileSync(path.join(dest, 'IDEA.md'), 'utf8').replace(/^#.*\n/, '').trim(); } catch {}
+    pendingApproval.set(chatId, { stage: gate.stage, slug, dest, idea, repoUrl: `https://github.com/${CONFIG.githubOwner}/${slug}` });
+  }
+  const text = decision === 'approve' ? '✅ approve' : decision === 'cancel' ? '❌ cancel' : (String(feedback || '').trim() || 'please revise');
+  await handleApproval(chatId, text);
+  return { ok: true };
+}
+
+// Kill a product from the dashboard — archive a restorable mirror first, stop
+// any running agent, then remove the local workspace. The GitHub repo is kept.
+async function killProduct(slug) {
+  const dest = path.join(ROOT, 'products', slug);
+  if (!slug || !/^[a-z0-9-]+$/i.test(slug) || !fs.existsSync(dest)) return { ok: false, message: `No product "${slug}".` };
+  const wasLive = fs.existsSync(path.join(dest, 'DEPLOY.json'));
+  const entry = running.get(slug);
+  if (entry) { try { entry.child.kill('SIGTERM'); } catch {} if (entry.watcher) clearInterval(entry.watcher); running.delete(slug); }
+  state.queue = state.queue.filter(j => j.product !== slug && j.name !== slug && j.slug !== slug); saveState();
+  for (const [cid, a] of pendingApproval) if (a.slug === slug) pendingApproval.delete(cid);
+  pendingIdeas.forEach((v, k) => { if (v?.action?.product === slug || v?.action?.name === slug) pendingIdeas.delete(k); });
+  let archived = '';
+  try {
+    const archDir = path.join(ROOT, 'archives'); fs.mkdirSync(archDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const bundle = path.join(archDir, `${slug}-${stamp}.bundle`);
+    await gitIn(dest, 'bundle', 'create', bundle, '--all');
+    archived = path.relative(ROOT, bundle);
+  } catch (err) { log(`kill: archive of ${slug} failed (${err.message})`); }
+  try {
+    const repoUrl = `https://github.com/${CONFIG.githubOwner}/${slug}`;
+    const line = `\n- **${slug}** removed via dashboard ${new Date().toISOString()} — local archive: ${archived || 'FAILED'}; GitHub repo retained: ${repoUrl}${wasLive ? '; was live (Cloudflare deployment left intact — tear down separately if wanted)' : ''}.`;
+    fs.appendFileSync(path.join(ROOT, 'docs', 'DECOMMISSIONS.md'), line);
+  } catch {}
+  try { fs.rmSync(dest, { recursive: true, force: true }); } catch (err) { return { ok: false, message: `Could not remove "${slug}": ${err.message}` }; }
+  refreshDashboard();
+  const note = `🗑 Removed "${slug}".${archived ? ' A restorable archive was saved and the' : ' The'} GitHub repo is kept as backup.${wasLive ? ' Its live site is still up — tell me if you want that torn down too.' : ''}`;
+  for (const c of CONFIG.allowedChatIds) send(c, note);
+  return { ok: true, message: note };
 }
 
 // The actual build — only reached after the founder approves the strategy.
@@ -558,6 +659,16 @@ function reconcileOnBoot() {
   for (const name of listProducts()) {
     if (running.has(name)) continue;
     const dest = path.join(ROOT, 'products', name);
+    // Restore a pending approval gate so the founder can still approve after a restart.
+    try {
+      const gate = JSON.parse(fs.readFileSync(path.join(dest, '.gate.json'), 'utf8'));
+      if (gate?.stage) {
+        const chatId = gate.chatId ?? WEB_CHAT_ID;
+        let idea = ''; try { idea = fs.readFileSync(path.join(dest, 'IDEA.md'), 'utf8').replace(/^#.*\n/, '').trim(); } catch {}
+        pendingApproval.set(chatId, { stage: gate.stage, slug: name, dest, idea, repoUrl: `https://github.com/${CONFIG.githubOwner}/${name}` });
+        log(`reconcile: ${name} restored pending ${gate.stage} approval`);
+      }
+    } catch {}
     if (!fs.existsSync(path.join(dest, 'DEPLOY-STAGED.json'))) continue;
     const verdict = readSummary(dest, 'QA-VERDICT.txt');
     if (/^PASS/i.test(verdict)) {
@@ -822,6 +933,12 @@ function serveWireframe(url, res) {
   res.writeHead(200, { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' });
   res.end(fs.readFileSync(file));
 }
+function readBody(req, cb) {
+  let b = '';
+  req.on('data', c => { b += c; if (b.length > 2e5) req.destroy(); });
+  req.on('end', () => { try { cb(JSON.parse(b || '{}')); } catch { cb(null); } });
+}
+const sendJson = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
 function dashAuthed(req) {
   if (!VIEW_PW) return true; // no password set → open
   // Direct access on the iMac (Host: localhost/127.0.0.1) needs no login; only
@@ -861,6 +978,28 @@ http.createServer((req, res) => {
             res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}');
           } else { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"ok":false}'); }
         } catch { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"ok":false}'); }
+      });
+    } else if (url === '/chat/poll') {
+      // Browser polls for factory replies since the last id it saw.
+      const since = Number(new URL(req.url, 'http://x').searchParams.get('since')) || 0;
+      sendJson(res, 200, { messages: webOutbox.filter(m => m.id > since), lastId: webSeq });
+    } else if (url === '/chat' && req.method === 'POST') {
+      readBody(req, j => {
+        if (!j || !j.message) { sendJson(res, 400, { ok: false }); return; }
+        handleWebChat(String(j.message)).catch(err => log('web chat failed:', err.message));
+        sendJson(res, 200, { ok: true });
+      });
+    } else if (url === '/approve' && req.method === 'POST') {
+      readBody(req, async j => {
+        if (!j || !j.product) { sendJson(res, 400, { ok: false }); return; }
+        const r = await approveProduct(String(j.product), String(j.decision || 'approve'), j.feedback);
+        sendJson(res, r.ok ? 200 : 400, r);
+      });
+    } else if (url === '/kill' && req.method === 'POST') {
+      readBody(req, async j => {
+        if (!j || !j.product) { sendJson(res, 400, { ok: false }); return; }
+        const r = await killProduct(String(j.product));
+        sendJson(res, r.ok ? 200 : 400, r);
       });
     } else if (url.startsWith('/preview/')) {
       // Serve a product's wireframes (design/) for founder approval at step 5.
