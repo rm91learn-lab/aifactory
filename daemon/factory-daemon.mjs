@@ -738,6 +738,22 @@ http.createServer((req, res) => {
       freshDashboard();
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(fs.readFileSync(path.join(ROOT, 'dashboard', 'data.json')));
+    } else if (url === '/request' && req.method === 'POST') {
+      let b = '';
+      req.on('data', c => { b += c; if (b.length > 1e5) req.destroy(); });
+      req.on('end', () => {
+        try {
+          const j = JSON.parse(b || '{}');
+          if (j.product && j.text && fs.existsSync(path.join(ROOT, 'products', j.product))) {
+            const label = j.kind === 'bug' ? 'Bug from dashboard' : j.kind === 'scope' ? 'Scope edit from dashboard' : 'Change from dashboard';
+            state.queue.push({ type: 'update', product: j.product, chatId: CONFIG.allowedChatIds[0], idea: `${label}: ${j.text}` });
+            saveState();
+            for (const c of CONFIG.allowedChatIds) send(c, `📥 ${label} for "${j.product}": ${j.text}\nQueued — runs through QA before promotion.`);
+            pump();
+            res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}');
+          } else { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"ok":false}'); }
+        } catch { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"ok":false}'); }
+      });
     } else {
       res.writeHead(404); res.end('not found');
     }
