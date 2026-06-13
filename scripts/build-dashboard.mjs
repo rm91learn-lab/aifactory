@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // AI-Factory dashboard generator — zero dependencies.
-// Grid overview + per-product kanban page (#p=<name>): phases move through
-// Backlog → Planning → In Development → Testing & QA → Done, derived from GSD's
-// .planning artifacts. Live activity feed streams from .factory-activity.json.
+// Overview = product cards only. Per-product page (#p=<name>): zig-zag drill-down
+// roadmap (stage → task → evidence) + editable scope, with parallel scrollable
+// Build-activity and QA-activity windows. Data from .factory-activity.json,
+// QA-REPORT.md and git. Served live at localhost:7717 by the daemon.
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -25,17 +26,6 @@ function read(file) {
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
-}
-
-// The factory's work queue: jobs waiting to be built (daemon state.json).
-function readFactoryQueue(root) {
-  const st = readJson(path.join(root, 'daemon', 'state.json')) || {};
-  const pending = (st.queue || []).map(j => {
-    const idea = String(j.idea || '').replace(/\s+/g, ' ').trim();
-    const label = j.type === 'build' ? 'new product build' : (idea.length > 72 ? idea.slice(0, 72) + '…' : idea) || 'change';
-    return { product: j.product || '(new product)', type: j.type || 'update', label };
-  });
-  return { pending };
 }
 
 // '## Phase 2: Booking flow' headings with their checkbox tasks.
@@ -191,7 +181,7 @@ export function statusText(root = ROOT) {
 
 function html(products) {
   const botUsername = readJson(path.join(ROOT, 'daemon', 'config.json'))?.botUsername || '';
-  const data = JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, botUsername, queue: readFactoryQueue(ROOT), products }).replace(/</g, '\\u003c');
+  const data = JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, botUsername, products }).replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -312,7 +302,7 @@ function html(products) {
 <header><h1 onclick="location.hash=''" style="cursor:pointer">AI-Factory</h1><span id="upd"></span></header>
 <div id="view"></div>
 <script>
-var DATA=${data},products=DATA.products,fqueue=DATA.queue||{pending:[]},last=Date.now();
+var DATA=${data},products=DATA.products,last=Date.now();
 var ST=["Capture","Plan","Design","Build","QA","Release","Operate","Evolve"];
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
 function esc(s){return String(s==null?"":s);}
@@ -519,7 +509,7 @@ function render(){
   if(p)renderProduct(v,p);else renderGrid(v);
 }
 window.addEventListener("hashchange",render);
-function tick(){fetch("data.json?_="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){if(d.uiVersion&&d.uiVersion!==DATA.uiVersion){location.reload();return;}products=d.products;fqueue=d.queue||fqueue;last=Date.now();render();}).catch(function(){});}
+function tick(){fetch("data.json?_="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){if(d.uiVersion&&d.uiVersion!==DATA.uiVersion){location.reload();return;}products=d.products;last=Date.now();render();}).catch(function(){});}
 if(location.protocol==="file:")setTimeout(function(){location.reload();},60000);else setInterval(tick,15000);
 setInterval(function(){document.getElementById("upd").textContent="updated "+Math.round((Date.now()-last)/1000)+"s ago";},1000);
 render();
@@ -531,7 +521,7 @@ export function buildDashboard(root = ROOT) {
   const products = collectProducts(root);
   const out = path.join(root, 'dashboard');
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, 'data.json'), JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, queue: readFactoryQueue(root), products }, null, 2));
+  fs.writeFileSync(path.join(out, 'data.json'), JSON.stringify({ generated: new Date().toISOString(), uiVersion: UI_VERSION, products }, null, 2));
   fs.writeFileSync(path.join(out, 'index.html'), html(products));
   return products;
 }
