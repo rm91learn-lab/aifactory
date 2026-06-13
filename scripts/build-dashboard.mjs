@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 // AI-Factory dashboard generator — zero dependencies.
-// Overview = product cards only. Per-product page (#p=<name>): a project-plan grid
-// (features × lifecycle stages, cumulative ticks), an editable-scope section, and
-// parallel scrollable Build-activity and QA-activity windows. Re-renders only when
-// data changes (no flicker). Data from .factory-activity.json, QA-REPORT.md and git.
-// Served live at localhost:7717 by the daemon.
+// Overview = product cards only. Per-product page (#p=<name>): a DORA-style metrics
+// strip (complete · features done · WIP · lead time · QA), a feature Kanban
+// (Backlog · In development · In QA/review · Done), a release view (production /
+// staging), a collapsible edit-scope section, and parallel scrollable
+// Build-activity and QA-activity windows. Re-renders only when data changes (no
+// flicker). Data from .factory-activity.json, QA-REPORT.md and git. Served at
+// localhost:7717 by the daemon.
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 11; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 12; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -153,6 +155,9 @@ export function collectProducts(root = ROOT) {
       version: parseVersion(dir),
       repoUrl: git(dir, 'remote', 'get-url', 'origin').replace(/\.git$/, ''),
       deployUrl: (() => { const d = readJson(path.join(dir, 'DEPLOY.json')); return d?.url || d?.live_url || ''; })(),
+      createdAt: git(dir, 'log', '--max-parents=0', '--format=%cI').split('\n').pop() || '',
+      liveAt: (() => { const d = readJson(path.join(dir, 'DEPLOY.json')); return d?.deployedAt || ''; })(),
+      staged: (() => { const d = readJson(path.join(dir, 'DEPLOY-STAGED.json')); return d?.previewUrl || d?.url || ''; })(),
       lastCommit: git(dir, 'log', '-1', '--format=%cr · %s').slice(0, 100),
       commits: Number(git(dir, 'rev-list', '--count', 'HEAD')) || 0,
       stage: !hasPlanning && !tasks.length ? 'scaffolded' : pctFinal >= 100 ? 'ready' : (board.length || tasks.length) ? 'in progress' : 'planning',
@@ -214,16 +219,31 @@ function html(products) {
   .windows{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
   .windows .qa{margin-bottom:0}
   @media(max-width:760px){.windows{grid-template-columns:1fr}}
-  .plan{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;margin-bottom:16px}
-  .ptbl{width:100%;border-collapse:collapse;font-size:13px}
-  .ptbl th{text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#7c8aa0;font-weight:500;padding:6px 4px;border-bottom:0.5px solid #232f47}
-  .ptbl th.fcol{text-align:left}
-  .ptbl td{padding:8px 4px;border-bottom:0.5px solid #141c2b;text-align:center}
-  .ptbl td.fcol{text-align:left;color:#dbe3ee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
-  .ptbl tr:last-child td{border-bottom:none}
-  .cell{color:#2b3650}
-  .cell.done{color:#3fb950;font-weight:600}
-  .cell.now{color:#d29922;font-weight:600}
+  .mstrip{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+  @media(max-width:640px){.mstrip{grid-template-columns:repeat(2,1fr)}}
+  .mcard{background:#0f1623;border:0.5px solid #232f47;border-radius:12px;padding:13px 14px}
+  .mcard .mv{font-size:22px;font-weight:600;color:#e6edf3}
+  .mcard .ml{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#7c8aa0;margin-top:2px}
+  .mcard.ok .mv{color:#3fb950}.mcard.bad .mv{color:#f0716f}.mcard.run .mv{color:#5b8cff}
+  .kbwrap{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;margin-bottom:16px}
+  .kb{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;overflow-x:auto}
+  @media(max-width:760px){.kb{grid-template-columns:repeat(4,minmax(150px,1fr))}}
+  .kcol{background:#0b1018;border:0.5px solid #1c2638;border-radius:10px;padding:9px;min-height:80px}
+  .kch{display:flex;justify-content:space-between;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#7c8aa0;margin-bottom:8px;padding:0 2px}
+  .kn{color:#e6edf3}
+  .kcard{background:#141b29;border:0.5px solid #2b3650;border-radius:8px;padding:8px 10px;margin-bottom:7px;font-size:13px}
+  .kcard.done{border-color:#1f3d28}.kcard.qa{border-color:#7a5c1a}.kcard.dev{border-color:#2d4373}
+  .kt{color:#dbe3ee}
+  .kcard.done .kt::before{content:"✓ ";color:#3fb950}
+  .kp{font-size:11px;color:#7c8aa0;margin-top:3px}
+  .rel{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  @media(max-width:640px){.rel{grid-template-columns:1fr}}
+  .relcard{background:#0f1623;border:0.5px solid #232f47;border-radius:12px;padding:13px 15px}
+  .relcard.ok{border-color:#1f3d28}.relcard.bad{border-color:#5a2a2a}.relcard.stg{border-color:#7a5c1a}
+  .rl2{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#7c8aa0}
+  .rv{font-size:14px;color:#e6edf3;margin-top:3px}
+  .relcard.ok .rv{color:#3fb950}.relcard.bad .rv{color:#f0716f}.relcard.stg .rv{color:#d29922}
+  .rurl{display:block;font-size:12px;font-family:ui-monospace,monospace;color:#5b8cff;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sh2{cursor:pointer}
   .sbody2{max-height:0;overflow:hidden;transition:max-height .3s}
   .pcard{background:#0f1623;border:0.5px solid #232f47;border-radius:14px;padding:16px;cursor:pointer;transition:border-color .15s}
@@ -450,39 +470,65 @@ function renderProduct(v,p){
   wl.onclick=function(){live.classList.toggle("show");wl.classList.toggle("on");};
   if(p.building){live.classList.add("show");wl.classList.add("on");}
   var windows=el("div","windows");windows.appendChild(buildPanel(p));windows.appendChild(qaPanel(p));v.appendChild(windows);
-  // project-plan grid: features (rows) × lifecycle stages (columns), cumulative ticks
-  v.appendChild(planGrid(p));
-  // edit scope (collapsible)
+  // industry-standard delivery view: metrics strip + feature Kanban + release view
+  v.appendChild(metricsStrip(p));
+  v.appendChild(featureKanban(p));
+  v.appendChild(releaseStrip(p));
   v.appendChild(scopeEditor(p));
 }
-var PCOLS=[["backlog","Planned"],["dev","Built"],["qa","Tested"],["done","Live"]];
-var PRANK={backlog:0,dev:1,qa:2,done:3};
-function planGrid(p){
-  var rows=(p.board||[]).slice();
-  var w=el("div","plan");
-  var h=el("div","qa-h");h.appendChild(el("span",null,"📋 Project plan"));
-  var doneN=rows.filter(function(r){return r.status==="done";}).length;
-  h.appendChild(el("span","pill",rows.length?(doneN+" of "+rows.length+" features live · "+p.pct+"%"):p.pct+"%"));
+var KCOLS=[["backlog","Backlog"],["dev","In development"],["qa","In QA / review"],["done","Done"]];
+function daysSince(a,b){if(!a)return null;var d=((b?new Date(b):new Date())-new Date(a))/86400000;return d<0?0:d;}
+function metricsStrip(p){
+  var rows=(p.board||[]);
+  var done=rows.filter(function(r){return r.status==="done";}).length;
+  var wip=rows.filter(function(r){return r.status==="dev"||r.status==="qa";}).length;
+  var qa=p.building&&/qa/i.test(p.runLabel||"")?"running":(p.qaVerdict?(/^PASS/i.test(p.qaVerdict)?"PASS":"FAIL"):"—");
+  var lead=daysSince(p.createdAt,p.liveAt);
+  var leadStr=lead==null?"—":(lead<1?"<1d":Math.round(lead)+"d")+(p.liveAt?"":" so far");
+  var w=el("div","mstrip");
+  function m(l,v,cls){var d=el("div","mcard"+(cls?" "+cls:""));d.appendChild(el("div","mv",v));d.appendChild(el("div","ml",l));return d;}
+  w.appendChild(m("complete",p.pct+"%"));
+  w.appendChild(m("features done",done+"/"+rows.length));
+  w.appendChild(m("in progress",String(wip)));
+  w.appendChild(m("lead time",leadStr));
+  w.appendChild(m("QA",qa,qa==="PASS"?"ok":qa==="FAIL"?"bad":qa==="running"?"run":""));
+  return w;
+}
+function featureKanban(p){
+  var rows=(p.board||[]);
+  var w=el("div","kbwrap");
+  var h=el("div","qa-h");h.appendChild(el("span",null,"🗂 Features"));h.appendChild(el("span","pill",rows.length+" total"));
   w.appendChild(h);
-  if(!rows.length){w.appendChild(el("div","qitem dim","Plan is being drawn up — features will appear here as the factory plans them."));return w;}
-  var tbl=el("table","ptbl");
-  var thead=el("tr");thead.appendChild(el("th","fcol","Feature"));
-  PCOLS.forEach(function(c){thead.appendChild(el("th",null,c[1]));});
-  tbl.appendChild(thead);
-  rows.forEach(function(r){
-    var rank=PRANK[r.status]==null?0:PRANK[r.status];
-    var tr=el("tr");
-    var fn=el("td","fcol",r.name);if(r.change)fn.textContent="🔧 "+r.name;tr.appendChild(fn);
-    PCOLS.forEach(function(c,ci){
-      var td=el("td");
-      if(ci<=rank){td.className="cell done";td.textContent="✓";}
-      else if(ci===rank+1&&r.status!=="done"){td.className="cell now";td.textContent="…";}
-      else{td.className="cell";td.textContent="";}
-      tr.appendChild(td);
+  if(!rows.length){w.appendChild(el("div","qitem dim","Features appear here as the factory plans them."));return w;}
+  var board=el("div","kb");
+  KCOLS.forEach(function(c){
+    var col=el("div","kcol");
+    var items=rows.filter(function(r){return (r.status||"backlog")===c[0];});
+    var ch=el("div","kch");ch.appendChild(el("span",null,c[1]));ch.appendChild(el("span","kn",String(items.length)));col.appendChild(ch);
+    items.forEach(function(r){
+      var card=el("div","kcard "+c[0]);
+      card.appendChild(el("div","kt",(r.change?"🔧 ":"")+r.name));
+      if(r.tasks&&r.tasks.length){var d=r.tasks.filter(function(t){return t.done;}).length;card.appendChild(el("div","kp",d+"/"+r.tasks.length+" tasks"));}
+      col.appendChild(card);
     });
-    tbl.appendChild(tr);
+    board.appendChild(col);
   });
-  w.appendChild(tbl);
+  w.appendChild(board);
+  return w;
+}
+function releaseStrip(p){
+  var w=el("div","rel");
+  var live=(p.health&&p.health.url)||p.deployUrl;
+  var prod=el("div","relcard "+(p.health?(p.health.up?"ok":"bad"):""));
+  prod.appendChild(el("div","rl2","Production"));
+  prod.appendChild(el("div","rv",live?(p.health?(p.health.up?"● live · "+p.health.ms+"ms":"● DOWN"):"deployed"):"not deployed yet"));
+  if(live){var a=el("a","rurl",live.replace(/^https?:\/\//,""));a.href=live;a.target="_blank";prod.appendChild(a);}
+  w.appendChild(prod);
+  var st=el("div","relcard "+(p.staged?"stg":""));
+  st.appendChild(el("div","rl2","Staging"));
+  st.appendChild(el("div","rv",p.staged?"● awaiting QA / promotion":"nothing staged"));
+  if(p.staged){var a2=el("a","rurl",p.staged.replace(/^https?:\/\//,""));a2.href=p.staged;a2.target="_blank";st.appendChild(a2);}
+  w.appendChild(st);
   return w;
 }
 function scopeEditor(p){
