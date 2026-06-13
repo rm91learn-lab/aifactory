@@ -12,6 +12,23 @@ If this product genuinely has NO user-facing UI (a pure API, CLI, library, worke
 
 Otherwise, continue.
 
+## The experience bar (non-negotiable)
+
+Every product MUST deliver an amazing customer experience. Functional is not the bar. For each primary journey in PRD.md, run this loop and record it in `design/UX-RATIONALE.md`:
+
+**deliberate → research → evaluate → deliberate → finalize.**
+
+1. **Deliberate** the journey: what is the user actually trying to accomplish, in the fewest possible steps?
+2. **Research** how the best-in-class modern products solve this exact flow today (not how old/legacy software did it). Name the references.
+3. **Evaluate** 2–3 concrete UX approaches against click/step count and friction.
+4. **Deliberate** the trade-offs and pick the lowest-friction one that still fits the domain.
+5. **Finalize** the wireframe for it, and note the resulting step count.
+
+Hard rules:
+- **Minimize clicks and steps.** Collapse multi-step flows; use smart defaults, inline/optimistic editing, autosave, bulk actions, search-first navigation, and undo instead of confirmation dialogs. The wireframe for each journey should show the shortest sensible path.
+- **No legacy patterns, ever.** No full-page reloads for routine actions, no multi-page wizards for what fits one screen, no "edit page → save → back to list" round-trips where inline editing works, no re-asking for data the system already has, no modal-on-modal, no dead-end screens. Design the modern equivalent.
+- For each primary journey, the wireframes and `DESIGN-SUMMARY.txt` must state the **number of steps/clicks** to complete it — this is what QA will measure the build against.
+
 ## What to do (UI products)
 
 1. **Run `design-consultation`** to establish a design system (tokens: colors, type, spacing, components, voice) appropriate for this product and its users. Record it (e.g. `design/DESIGN-SYSTEM.md`).

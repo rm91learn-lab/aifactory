@@ -50,6 +50,15 @@ A product can pass the showroom check (every module reachable) and still be medi
   - Hierarchy/org structure the domain implies is modeled and visible, not absent.
 - If the product is a set of disconnected modules with no shared backbone, or the data model contradicts STRATEGY.md's domain model, that is a FAIL — record exactly which relationships/entities are missing or faked.
 
+## CUSTOMER-EXPERIENCE CHECK (mandatory, gating) — is it amazing, or just functional?
+
+Working is not the bar. Every product MUST deliver an amazing customer experience, with the fewest possible clicks/steps and zero legacy clunk. A product that "works" but is tedious is a FAIL.
+
+- For EACH primary journey in PRD.md, actually perform it in the browser and **count the clicks/steps and screen loads** the user needs end to end. Record the count in QA-REPORT.md per journey. If a journey takes more steps than it should — there is an obvious lower-friction path the build didn't take — that is a finding.
+- Flag any **legacy/clunky pattern** as a finding (these FAIL when they hurt a primary journey): full-page reloads for routine actions; multi-page wizards for something that fits one screen; "go to a separate edit page → save → navigate back" where inline/optimistic editing belongs; re-asking for data the system already has; modal-on-modal; confirmation dialogs for trivial reversible actions (use undo); dead-end states with no next action; no search/filter on long lists; no bulk action where users act on many items; no keyboard/Enter support on forms; janky loading with no feedback.
+- The experience must match or beat the approved wireframes/design system — not regress to a default-bootstrap shell. Smart defaults, autosave/inline edit, sensible empty states, and clear feedback are expected, not optional.
+- Verdict: if any primary journey is needlessly long or carries a legacy pattern that a real customer would find clunky, the product is NOT amazing ⇒ FAIL, with the specific journeys, step counts, and the lower-friction fix named.
+
 ## CODE HYGIENE & REMOVAL CHECK (gating)
 
 - **Dead code:** flag any function, file, endpoint, route, or config the change left UNREFERENCED as a finding. Code superseded by this change must have been deleted in this change — leftover orphans are a defect.

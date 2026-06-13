@@ -11,7 +11,7 @@ Deliberate hard and research the domain (web + domain knowledge — how do real,
 2. **Product thesis** — the sharpest one-line version; why it's worth building; what makes it good vs mediocre.
 3. **Domain model** — the core entities and how they RELATE, drawn from how real systems in this domain are structured. This is mandatory and is the thing that prevents a shallow, siloed product. (E.g. an HRMS is not a pile of modules — it's employees ↔ positions ↔ departments/org-units ↔ a reporting hierarchy, with everything hanging off that backbone. State the equivalent backbone for THIS product, with the key relationships.)
 4. **MVP scope** — the smallest slice that proves the thesis, built on the real domain model (not a flat shortcut). What is explicitly deferred.
-5. **What "good" looks like** to a domain expert — the bar; common ways products in this space come out mediocre, and how this one won't.
+5. **What "good" looks like** to a domain expert — the bar; common ways products in this space come out mediocre, and how this one won't. Include the **customer-experience bar**: every product must be an amazing experience with the fewest possible clicks/steps and modern (never legacy) workflows — note where products in this space are typically clunky and how this one will be radically smoother.
 6. **Risks, unknowns, and decisions that need the founder.**
 7. **Open questions for the founder.**
 
