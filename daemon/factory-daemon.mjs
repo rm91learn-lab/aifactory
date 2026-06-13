@@ -35,6 +35,8 @@ const QA_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'qa-prompt.md'), 'utf8
 const QA_ENABLED = CONFIG.qa?.enabled !== false;
 const UPGRADE_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'upgrade-prompt.md'), 'utf8');
 const STRATEGY_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'strategy-prompt.md'), 'utf8');
+const PRD_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'prd-prompt.md'), 'utf8');
+const DESIGN_TEMPLATE = fs.readFileSync(path.join(DAEMON_DIR, 'design-prompt.md'), 'utf8');
 
 // --- self-check mode (no token needed): validate environment and exit -------
 if (process.argv.includes('--check')) {
@@ -69,7 +71,7 @@ const state = loadState();
 const running = new Map(); // slug -> { child, chatId, watcher, lastPhaseSig }
 const warnedChats = new Set();
 const pendingIdeas = new Map(); // chatId -> message text awaiting new-vs-update routing
-const pendingStrategy = new Map(); // chatId -> {slug,dest,idea,repoUrl} awaiting strategy approval
+const pendingApproval = new Map(); // chatId -> {stage,slug,dest,idea,repoUrl} awaiting a human gate (strategy → prd → design)
 
 function listProducts() {
   try {
@@ -214,7 +216,7 @@ async function handleMessage(msg) {
     state.queue = [];
     saveState();
     pendingIdeas.delete(chatId);
-    pendingStrategy.delete(chatId);
+    pendingApproval.delete(chatId);
     const killed = [];
     for (const [key, entry] of running) {
       try { entry.child.kill('SIGTERM'); killed.push(key); } catch {}
@@ -224,8 +226,8 @@ async function handleMessage(msg) {
       : 'Nothing was running or waiting.');
   } else if (text.startsWith('/')) {
     await send(chatId, `Unknown command ${text.split(' ')[0]}. /help for commands.`);
-  } else if (pendingStrategy.has(chatId)) {
-    await handleStrategyReply(chatId, text);
+  } else if (pendingApproval.has(chatId)) {
+    await handleApproval(chatId, text);
   } else {
     await routeIdea(chatId, text);
   }
@@ -407,44 +409,92 @@ async function startBuild({ idea, chatId, name }) {
   await runStrategy(slug, dest, chatId, idea, repoUrl, '');
 }
 
-// Step 1 (mandatory): office-hours strategy → STRATEGY.md → present to founder for approval.
-async function runStrategy(slug, dest, chatId, idea, repoUrl, feedback) {
-  await send(chatId, `🧭 Deliberating the strategy for "${slug}" — I'll send it for your approval shortly (no build until then).`);
-  const prompt = STRATEGY_TEMPLATE.replace('{{IDEA}}', idea)
-    .replace('{{FEEDBACK}}', feedback ? `\nFOUNDER FEEDBACK on the previous strategy — revise to address it:\n${feedback}\n` : '');
-  const child = spawnAgent(dest, prompt, `${slug}-strategy`, 'strategy');
+// ── Gated pipeline: three human-approval stages before any code is written ──
+//   strategy (step 1) → PRD (step 2) → design/wireframes (step 5) → build.
+//   Each stage runs a headless agent that produces an artifact and exits; the
+//   factory presents a plain-language summary on Telegram and waits for the
+//   founder to Approve / revise / Cancel before the next stage starts.
+const fb = (feedback, stage) => feedback ? `\nFOUNDER FEEDBACK on the previous ${stage} — revise to address it:\n${feedback}\n` : '';
+const approvalKeyboard = () => ({ keyboard: [[{ text: '✅ Approve & continue' }], [{ text: '❌ Cancel' }]], one_time_keyboard: true, resize_keyboard: true });
+
+// Spawn a gated stage agent: run it, commit/push its output, then run present().
+function spawnGated(stage, slug, dest, chatId, idea, repoUrl, prompt, logName, commitMsg, present) {
+  const child = spawnAgent(dest, prompt, logName, stage);
   running.set(slug, { child, chatId });
   saveState(); refreshDashboard();
   child.on('exit', async () => {
     running.delete(slug); saveState();
-    try { await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', 'factory: product strategy'); await gitIn(dest, 'push', 'origin', 'HEAD'); } catch {}
+    try { await gitIn(dest, 'add', '-A'); await gitIn(dest, 'commit', '-m', commitMsg); await gitIn(dest, 'push', 'origin', 'HEAD'); } catch {}
     refreshDashboard();
-    const summary = readSummary(dest, 'STRATEGY-SUMMARY.txt') || readSummary(dest, 'STRATEGY.md') || 'Strategy written — open STRATEGY.md in the repo.';
-    pendingStrategy.set(chatId, { slug, dest, idea, repoUrl });
-    await tg('sendMessage', {
-      chat_id: chatId,
-      text: `🧭 STRATEGY for "${slug}" — approve before I build:\n\n${summary.slice(0, 3200)}\n\n✅ Approve to build · type any changes to revise · ❌ Cancel`,
-      reply_markup: { keyboard: [[{ text: '✅ Approve & build' }], [{ text: '❌ Cancel' }]], one_time_keyboard: true, resize_keyboard: true },
-    });
+    await present();
     pump();
   });
 }
 
-async function handleStrategyReply(chatId, text) {
-  const s = pendingStrategy.get(chatId);
-  if (!s) return;
+async function presentApproval(stage, slug, dest, chatId, idea, repoUrl, headline, body) {
+  pendingApproval.set(chatId, { stage, slug, dest, idea, repoUrl });
+  await tg('sendMessage', {
+    chat_id: chatId,
+    text: `${headline}\n\n${String(body).slice(0, 3200)}\n\n✅ Approve to continue · type any changes to revise · ❌ Cancel`,
+    reply_markup: approvalKeyboard(),
+  });
+}
+
+// Step 1 — strategy
+function runStrategy(slug, dest, chatId, idea, repoUrl, feedback = '') {
+  send(chatId, `🧭 Deliberating the strategy for "${slug}" — I'll send it for approval (no code until you approve).`);
+  const prompt = STRATEGY_TEMPLATE.replace('{{IDEA}}', idea).replace('{{FEEDBACK}}', fb(feedback, 'strategy'));
+  spawnGated('strategy', slug, dest, chatId, idea, repoUrl, prompt, `${slug}-strategy`, 'factory: product strategy', async () => {
+    const body = readSummary(dest, 'STRATEGY-SUMMARY.txt') || readSummary(dest, 'STRATEGY.md') || 'Strategy written — open STRATEGY.md in the repo.';
+    await presentApproval('strategy', slug, dest, chatId, idea, repoUrl, `🧭 STRATEGY for "${slug}" — approve before I write the PRD:`, body);
+  });
+}
+
+// Step 2 — PRD (requirements + roadmap via /gsd:new-project)
+function runPRD(slug, dest, chatId, idea, repoUrl, feedback = '') {
+  send(chatId, `📋 Writing the PRD (requirements + roadmap) for "${slug}" — I'll send it for approval.`);
+  const prompt = PRD_TEMPLATE.replace('{{IDEA}}', idea).replace('{{FEEDBACK}}', fb(feedback, 'PRD'));
+  spawnGated('prd', slug, dest, chatId, idea, repoUrl, prompt, `${slug}-prd`, 'factory: PRD + roadmap', async () => {
+    const body = readSummary(dest, 'PRD-SUMMARY.txt') || readSummary(dest, 'PRD.md') || 'PRD written — open PRD.md in the repo.';
+    await presentApproval('prd', slug, dest, chatId, idea, repoUrl, `📋 PRD for "${slug}" — approve before design & build:`, body);
+  });
+}
+
+// Step 5 — design system + wireframes (UI products); auto-skips for non-UI products
+function runDesign(slug, dest, chatId, idea, repoUrl, feedback = '') {
+  send(chatId, `🎨 Designing the screens for "${slug}" — I'll send wireframes for approval (or skip if it has no UI).`);
+  const prompt = DESIGN_TEMPLATE.replace('{{IDEA}}', idea).replace('{{FEEDBACK}}', fb(feedback, 'design'));
+  spawnGated('design', slug, dest, chatId, idea, repoUrl, prompt, `${slug}-design`, 'factory: design system + wireframes', async () => {
+    if (fs.existsSync(path.join(dest, 'DESIGN-SKIP.txt'))) {
+      await send(chatId, `"${slug}" has no user-facing UI — skipping wireframe approval. Building now (staged for QA before anything goes live).`);
+      runProductBuild(slug, dest, chatId, repoUrl, idea);
+      return;
+    }
+    const link = `${dashboardLink()}/preview/${slug}/`;
+    const body = `Open the wireframes on your phone:\n${link}\n\n${readSummary(dest, 'DESIGN-SUMMARY.txt') || 'Wireframes are ready to view.'}`;
+    await presentApproval('design', slug, dest, chatId, idea, repoUrl, `🎨 WIREFRAMES for "${slug}" — view the screens, then approve before I build:`, body);
+  });
+}
+
+async function handleApproval(chatId, text) {
+  const a = pendingApproval.get(chatId);
+  if (!a) return;
   const t = text.trim();
-  if (/^✅|^approve|^yes\b|^go\b|build/i.test(t)) {
-    pendingStrategy.delete(chatId);
-    await send(chatId, `Approved — building "${s.slug}" to the strategy now, through the full pipeline (research → plan review → design → build → QA → staged).`);
-    runProductBuild(s.slug, s.dest, chatId, s.repoUrl, s.idea);
+  const { stage, slug, dest, idea, repoUrl } = a;
+  if (/^✅|^approve|^yes\b|^go\b|^build|^continue/i.test(t)) {
+    pendingApproval.delete(chatId);
+    if (stage === 'strategy') { await send(chatId, `Approved. Writing the PRD for "${slug}" next.`); runPRD(slug, dest, chatId, idea, repoUrl); }
+    else if (stage === 'prd') { await send(chatId, `PRD approved. Designing the screens for "${slug}" next.`); runDesign(slug, dest, chatId, idea, repoUrl); }
+    else if (stage === 'design') { await send(chatId, `Design approved. Building "${slug}" to the approved plan — staged for QA before anything goes live.`); runProductBuild(slug, dest, chatId, repoUrl, idea); }
   } else if (/^❌|^cancel|^stop/i.test(t)) {
-    pendingStrategy.delete(chatId);
-    await send(chatId, `Cancelled "${s.slug}". The repo + strategy are saved; say the word to resume.`);
+    pendingApproval.delete(chatId);
+    await send(chatId, `Cancelled "${slug}" at the ${stage} stage. Everything so far is saved in the repo; say the word to resume.`);
   } else {
-    pendingStrategy.delete(chatId);
-    await send(chatId, `Revising the strategy for "${s.slug}" with your input — I'll resend it for approval.`);
-    runStrategy(s.slug, s.dest, chatId, s.idea, s.repoUrl, t);
+    pendingApproval.delete(chatId);
+    await send(chatId, `Revising the ${stage} for "${slug}" with your input — I'll resend it for approval.`);
+    if (stage === 'strategy') runStrategy(slug, dest, chatId, idea, repoUrl, t);
+    else if (stage === 'prd') runPRD(slug, dest, chatId, idea, repoUrl, t);
+    else if (stage === 'design') runDesign(slug, dest, chatId, idea, repoUrl, t);
   }
 }
 
@@ -621,7 +671,9 @@ function startQA(name, dest, chatId, qaRound, summaryFile, repoUrl) {
       } catch (err) {
         promoteNote = `\n⚠️ Promotion to production failed (${err.message.slice(0, 120)}) — production still runs the previous version.`;
       }
-      await send(chatId, `🧪✅ Independent QA passed "${name}".\n${verdict}\n\n${summary || ''}${promoteNote}${repoUrl ? `\n${repoUrl}` : ''}`.trim());
+      const docs = readSummary(dest, 'DOCS.txt');
+      const docLine = docs ? `\n📄 Docs (updated to match what shipped): ${docs}` : '';
+      await send(chatId, `🧪✅ Independent QA passed "${name}".\n${verdict}\n\n${summary || ''}${promoteNote}${docLine}${repoUrl ? `\n${repoUrl}` : ''}`.trim());
       startCanary(name, dest, chatId);
     } else if (!verdictRaw) {
       await send(chatId, `🧪⚠️ QA finished for "${name}" but wrote no verdict — treat it as untested. QA log: daemon/logs/${name}-qa.log\n\n${summary || ''}`.trim());
@@ -751,6 +803,25 @@ const DASH_PORT = CONFIG.dashboardPort || 7717;
 // Basic-auth gate so the dashboard is safe to expose through a tunnel.
 // Set daemon/.env DASHBOARD_VIEW_PASSWORD (user "factory"); no password = localhost-only, open.
 const VIEW_PW = process.env.DASHBOARD_VIEW_PASSWORD || '';
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf' };
+// Serve products/<slug>/design/* (wireframes) for the step-5 approval link.
+function serveWireframe(url, res) {
+  const rest = decodeURIComponent(url.slice('/preview/'.length));
+  const slug = rest.split('/')[0];
+  if (!slug || !/^[a-z0-9-]+$/i.test(slug) || !fs.existsSync(path.join(ROOT, 'products', slug))) { res.writeHead(404); res.end('not found'); return; }
+  const designDir = path.join(ROOT, 'products', slug, 'design');
+  let rel = rest.slice(slug.length).replace(/^\/+/, '') || 'index.html';
+  if (rel.endsWith('/')) rel += 'index.html';
+  const file = path.resolve(designDir, rel);
+  if (!file.startsWith(path.resolve(designDir) + path.sep) && file !== path.resolve(designDir, 'index.html')) { res.writeHead(403); res.end('forbidden'); return; }
+  if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    const idx = path.join(designDir, 'index.html');
+    if (fs.existsSync(idx)) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(fs.readFileSync(idx)); return; }
+    res.writeHead(404); res.end(`No wireframes found for "${slug}" yet.`); return;
+  }
+  res.writeHead(200, { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' });
+  res.end(fs.readFileSync(file));
+}
 function dashAuthed(req) {
   if (!VIEW_PW) return true; // no password set → open
   // Direct access on the iMac (Host: localhost/127.0.0.1) needs no login; only
@@ -791,6 +862,9 @@ http.createServer((req, res) => {
           } else { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"ok":false}'); }
         } catch { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"ok":false}'); }
       });
+    } else if (url.startsWith('/preview/')) {
+      // Serve a product's wireframes (design/) for founder approval at step 5.
+      serveWireframe(url, res);
     } else {
       res.writeHead(404); res.end('not found');
     }

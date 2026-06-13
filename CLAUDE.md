@@ -27,9 +27,15 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 - **Turbo skills** own the ship tail and QA. They write working files under `.turbo/` (gitignored).
 - **gstack skills** (13: plan reviews, design, security, docs, health, office-hours) add the product/design/review dimension. Their preambles call `~/.claude/skills/gstack/bin/*` helper scripts with `|| true` fallbacks — full features when a global gstack install exists, silent defaults otherwise. `design-review` uses the gstack browse daemon when available; falls back to static analysis.
 
-## The strategy gate (mandatory, before any build)
+## The human-approval gates (mandatory, before any code ships)
 
-**No product code is written until a human approves the strategy. Period.** Every new build STARTS at stage 1 (`office-hours`): the factory scaffolds the repo, records the idea, then a strategy agent (`daemon/strategy-prompt.md`) deliberates and researches the domain and writes `STRATEGY.md` — problem, thesis, **domain model (entities + how they relate + hierarchy/org where the domain has one)**, MVP scope, what "good" looks like, risks, open questions — plus a plain-language `STRATEGY-SUMMARY.txt`. The factory sends that summary to the founder and waits. Only on explicit approval does the build proceed; founder edits re-run the strategy. The approved `STRATEGY.md` is the build's contract — the data model, APIs, and UI are built ON its domain backbone, never as a flat pile of siloed modules. This gate exists because skipping strategy/research produced shallow, mediocre products (the hrms-app lesson); the build agent must run the FULL documented pipeline, not a new-project + autonomous shortcut.
+**No product code is written until the human approves, at three gates, in order.** A new build proceeds gate-by-gate; each gate runs a headless agent that produces an artifact and stops, the daemon sends the founder a plain-language summary on Telegram, and nothing advances until they Approve / revise / Cancel. Founder edits re-run that stage. The approved artifacts are the build's contract.
+
+1. **Strategy (step 1, `office-hours`)** — `daemon/strategy-prompt.md` → `STRATEGY.md`: problem, thesis, **domain model (entities + how they relate + hierarchy/org where the domain has one)**, MVP scope, what "good" looks like, risks. Plus `STRATEGY-SUMMARY.txt`.
+2. **PRD (step 2, `/gsd:new-project`)** — `daemon/prd-prompt.md` → `PRD.md` + `.planning/` roadmap/requirements built ON the approved domain model. Plus `PRD-SUMMARY.txt`.
+3. **Design / wireframes (step 5, `design-consultation` + `design-html`)** — `daemon/design-prompt.md` → a static `design/` folder the daemon serves at `/preview/<slug>/` so the founder views the screens on their phone before approving. Plus `DESIGN-SUMMARY.txt`. Non-UI products write `DESIGN-SKIP.txt` and this gate auto-skips.
+
+Only after design approval does the build agent (`daemon/build-prompt.md`) run the rest of the pipeline — plan-phase → autoplan review → execute-phase → verify-work → finalize/ship (staged) → `document-release` (writes `DOCS.txt`, a link the daemon sends the founder) — building strictly to the three approved artifacts. The data model, APIs, and UI hang off the domain backbone, never a flat pile of siloed modules. These gates exist because skipping strategy/research/design produced shallow, mediocre products (the hrms-app lesson); the build agent must run the FULL documented pipeline, never a new-project + autonomous shortcut.
 
 ## The iron rule
 

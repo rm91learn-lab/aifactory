@@ -4,7 +4,7 @@ PRODUCT: {{PRODUCT}}
 
 ## What to do
 
-1. **Learn what was promised.** Read IDEA.md, `.planning/REQUIREMENTS.md`, and the UI itself. The promises in the interface are the contract — every input type, format, button, and flow the product offers a user.
+1. **Learn what was promised.** Read the approved contract — `STRATEGY.md` (domain model), `PRD.md` + `.planning/REQUIREMENTS.md` (requirements + MVP scope), the approved wireframes in `design/` (the screens that were signed off), and `IDEA.md` — then the UI itself. The built product must deliver the PRD's MVP features, reflect STRATEGY.md's domain model, and match the approved wireframes/design system. The promises in the interface are also part of the contract — every input type, format, button, and flow the product offers a user.
 
 2. **Test the real thing, the way a real user would.**
    - You have a specialist QA toolkit installed — use it instead of improvising: `qa-test-planner` (what to test, edge-case discovery), `playwright-e2e-testing` and `webapp-playwright-testing` (how to write solid browser tests: locators, auto-waiting, flakiness), `a11y-playwright-testing` (accessibility), `api-testing` / `api-contract-validator` / `api-test-suite-generator` (API correctness and contracts), `state-machine-test-generator` (stateful flows).
