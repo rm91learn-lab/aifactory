@@ -5,7 +5,7 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 ## Imported
 
 ### open-gsd/gsd-core — orchestration spine
-- **Commit:** `f116b76` (2026-06-13) · MIT · https://github.com/open-gsd/gsd-core
+- **Commit:** `83e87e3` (2026-06-14) · MIT · https://github.com/open-gsd/gsd-core
 - **Why:** The most actively maintained spec-driven SDLC orchestrator for Claude Code (successor to get-shit-done). Phase loop (discuss → plan → execute → verify), wave-based parallel subagent execution, autonomous mode, file-based state in `.planning/`.
 - **Imported:** `commands/gsd/` → `.claude/commands/gsd/` (69 commands); `agents/` → `.claude/agents/` (33 agents); `gsd-core/{workflows,references,templates,contexts}` → `.claude/gsd-core/`.
 - **Modified:** all `@~/.claude/gsd-core/...` and `$HOME/.claude/gsd-core/...` references rewritten to project-local `.claude/gsd-core/...` (what the official installer does for `--local` installs).
@@ -19,7 +19,7 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 - **Excluded (5):** brainstorming, writing-plans, executing-plans, subagent-driven-development (GSD owns planning/execution — two planning systems would conflict), using-superpowers (plugin bootstrap, meaningless outside the plugin).
 
 ### tobihagemann/turbo — ship tail & QA
-- **Commit:** `e5e55de` (2026-06-07) · https://github.com/tobihagemann/turbo
+- **Commit:** `f78e854` (2026-06-14) · https://github.com/tobihagemann/turbo
 - **Why:** The strongest PR/ship workflow collection studied: full PR lifecycle (create, review, resolve comments, reply threads), iterative polish loop, audit, dependency maintenance — the stages GSD and superpowers don't cover.
 - **Imported (50 of 74):** finalize, audit, review-code, polish-code, find-dead-code, simplify-code/docs, investigate, create-threat-model, 4 testing skills, 4 dependency/tooling skills, 4 findings skills, all 15 git/GitHub skills, 5 external-tool skills (Codex peer review — degrade gracefully), 5 rules skills, self-improve, note-improvement, create-handoff, recall-reasoning.
 - **Modified:** `~/.claude/skills/` self-references rewritten to project-local `.claude/skills/`.
