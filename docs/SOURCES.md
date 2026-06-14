@@ -11,6 +11,13 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 - **Modified:** all `@~/.claude/gsd-core/...` and `$HOME/.claude/gsd-core/...` references rewritten to project-local `.claude/gsd-core/...` (what the official installer does for `--local` installs).
 - **Excluded:** runtime hooks (update checker, context monitor, prompt guards, statusline) — convenience features requiring installer execution; installable later via `npx @opengsd/gsd-core@latest --claude --local`. Also excluded: src/tests/build tooling (not needed at runtime).
 
+### mvanhorn/last30days-skill — recency research
+- **Commit:** `1221584` (2026-06-06, v3.3.2) · MIT · https://github.com/mvanhorn/last30days-skill
+- **Why:** Recency-weighted, engagement-ranked research across Reddit, X, YouTube, TikTok, Instagram, Hacker News, GitHub, Polymarket, Bluesky and the web — "what are people actually saying about X in the last 30 days." Complements the strategy/research gates (real-world domain signal beyond static web search) and the experience rule (how the best products in a space are discussed and solved right now).
+- **Imported:** `skills/last30days/{SKILL.md,scripts,references,agents}` → `.claude/skills/last30days/` (88 files, ~1.3 MB). Zero Python dependencies (stdlib + `node`/`python3`); `user-invocable: true`, so it surfaces in the skills list automatically.
+- **Excluded:** `assets/` (14 MB demo media — mp3/images, unreferenced by skill logic), plus `tests/`, `docs/`, `fixtures/`, `media/`, CI workflows, and `pyproject.toml`/`uv.lock` (dev-only) — not needed at runtime.
+- **Caveats:** all API keys are OPTIONAL (`SCRAPECREATORS_API_KEY` is primary; OPENAI/XAI/BRAVE/APIFY/etc.) — without them it falls back to keyless/public sources (Reddit RSS, HN, …). It can read local browser cookies (Chrome/Safari) for authenticated X scraping — cookies are decrypted locally and used only against their own sites. Safety-scanned before import: no pipe-to-shell, no `eval`, no cookie exfiltration; every network endpoint is a known public API. Needs `python3` and `node` on PATH.
+
 ### obra/superpowers — engineering discipline
 - **Commit:** `6fd4507` (2026-05-29, v5.1.0) · MIT · https://github.com/obra/superpowers
 - **Why:** Battle-tested process-discipline skills: TDD (red-green-refactor enforced), systematic debugging (root cause before fixes), verification gates, two-stage code review, git worktree hygiene.
