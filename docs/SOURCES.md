@@ -89,7 +89,10 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 ### github.com/resources/articles/ai-in-software-development — framing only
 - Editorial, no code. Its six SDLC stages (plan, design, develop, test, deploy, maintain) informed the pipeline structure in CLAUDE.md.
 
-## Evaluated — trial in progress
+## Evaluated — not adopted
+
+### chopratejas/headroom — context-compression proxy (cost lever) — TRIAL COMPLETE: do not adopt
+**Verdict (2026-06-14, Phase-2 complete): not worth adopting for this factory.** The integration is clean and safe — the proxy ran real `claude -p` agents on Claude Code **subscription auth** with no auth wall, output quality intact, stable. But on real agent traffic it delivered **0% savings**: 9 requests / 67K tokens, **0 compressed** (`prefix_frozen: 3`, `too_small: 2`, `no_compressible_content: 4`). The cost breakdown is the reason — `cache_savings_usd: 1.50` (Anthropic **prompt caching** already captured the savings) vs `compression_savings_usd: 0.00`, net **savings_pct: 0.0**. Headroom correctly *defers* to the cache (won't compress a cached prefix — doing so would break the cache and cost more). Its compression is for clients that DON'T prompt-cache; Claude Code already does. So it would only add an extra proxy in every agent's critical path for ~0 benefit here. Kept as a reference; revisit only if the factory ever runs large-context agents on a non-caching client.
 
 ### chopratejas/headroom — context-compression proxy (cost lever)
 - **Commit:** `01fdedc` (2026-06-13, v0.25.0) · Apache-2.0 · https://github.com/chopratejas/headroom · PyPI `headroom-ai`, npm `headroom-ai`
