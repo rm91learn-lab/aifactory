@@ -142,10 +142,12 @@ export function collectProducts(root = ROOT) {
     const tasks = (a?.tasks || []).slice(0, 60);
     const tasksDone = tasks.filter(t => t.status === 'completed').length;
     const pctFinal = board.length ? pct : tasks.length ? Math.round((tasksDone / tasks.length) * 100) : pct;
+    const gateData = readJson(path.join(dir, '.gate.json'));
     return {
       name,
       idea: read(path.join(dir, 'IDEA.md')).replace(/^#.*\n/, '').trim().slice(0, 600),
-      building: active.includes(name) || (a && a.updatedAt && (Date.now() - new Date(a.updatedAt).getTime() < 180000)),
+      // Parked at a human-approval gate ⇒ NOT building (it's waiting for you), even if activity is recent.
+      building: !gateData && (active.includes(name) || (a && a.updatedAt && (Date.now() - new Date(a.updatedAt).getTime() < 180000))),
       pct: pctFinal,
       board,
       tasks,
@@ -179,10 +181,9 @@ export function collectProducts(root = ROOT) {
         finalReport: fs.existsSync(path.join(dir, 'FINAL-REPORT.md')),
       },
       gate: (() => {
-        const g = readJson(path.join(dir, '.gate.json'));
-        if (!g?.stage) return null;
-        const f = { strategy: 'STRATEGY-SUMMARY.txt', prd: 'PRD-SUMMARY.txt', design: 'DESIGN-SUMMARY.txt' }[g.stage];
-        return { stage: g.stage, summary: (f ? read(path.join(dir, f)) : '').trim().slice(0, 2000) };
+        if (!gateData?.stage) return null;
+        const f = { strategy: 'STRATEGY-SUMMARY.txt', prd: 'PRD-SUMMARY.txt', design: 'DESIGN-SUMMARY.txt' }[gateData.stage];
+        return { stage: gateData.stage, summary: (f ? read(path.join(dir, f)) : '').trim().slice(0, 2000) };
       })(),
       docs: read(path.join(dir, 'DOCS.txt')).trim().split('\n')[0].slice(0, 300),
     };
@@ -566,7 +567,8 @@ function docsPanel(p){
 function renderProduct(v,p){
   var back=el("span","back","← all products");back.onclick=function(){location.hash="";};v.appendChild(back);
   var h=el("div","dh");h.appendChild(el("span","nm",p.name));h.appendChild(badges(p));v.appendChild(h);
-  v.appendChild(el("div","sub",(p.pct||0)+"% · "+(p.stateLine||p.stage||"")));
+  var gnames={strategy:"strategy",prd:"PRD",design:"wireframes"};
+  v.appendChild(el("div","sub",p.gate?("⏳ Waiting for your approval of the "+(gnames[p.gate.stage]||p.gate.stage)+" — review below, then Approve to continue"):((p.pct||0)+"% · "+(p.stateLine||p.stage||""))));
   // lifecycle status (always visible): Idea → Strategy → PRD → Design → Build → QA → Live
   var lc=el("div","live show");lc.appendChild(rail(p,true));v.appendChild(lc);
   var ab=approvalBanner(p);if(ab)v.appendChild(ab);
