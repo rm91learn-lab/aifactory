@@ -75,6 +75,8 @@ Only after design approval does the build agent (`daemon/build-prompt.md`) run t
 .claude/skills/         skills: superpowers (9) + turbo (50) + gstack (13) + QA pack (10) + custom + last30days + pm-skills (25 PM frameworks)
 products/               product workspaces (gitignored; each its own git repo on GitHub)
 docs/SOURCES.md         provenance of every import, and what was rejected and why
+docs/BUILD-PROCESS.md   the canonical ordered pipeline flow (idea → gates → build → QA → release)
+docs/TOOLCHAIN.md       sanctioned testing/dev tools (Playwright, Vitest/Jest/pytest, k6, promptfoo, Storybook, Faker…) — installed per-product, never vendored
 scripts/new-product.sh  scaffold a product workspace; --github creates + pushes the repo
 scripts/build-dashboard.mjs  regenerate dashboard/index.html from products/*/.planning state
 scripts/build-vault.mjs      sync the Tolaria product registry (one note per product) — see below

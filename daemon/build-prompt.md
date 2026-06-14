@@ -13,6 +13,7 @@ Operating rules:
 3. Execute the approved roadmap through the full pipeline — do NOT shortcut to a bare autonomous run (that is what produced shallow products before). For each phase:
    - `/gsd:plan-phase` (research → plan → machine-verified plan), then review the plan with `autoplan` (CEO → design → eng → DX). Resolve the review findings before building.
    - `/gsd:execute-phase` to build + verify the phase. Engineering discipline applies — failing test first, root cause before fixes, fresh verification evidence before claiming completion. Build the UI to the approved wireframes/design system.
+   - **Toolchain (see `docs/TOOLCHAIN.md`):** write tests in the product's stack-native runner — Vitest/Jest (JS/TS), pytest (Python), testify (Go), Catch2 (C++); use Faker for realistic test + seed/demo data (never lorem-ipsum the founder will see); cover journeys with Playwright; build component-first with Storybook where it helps. Install per-product (npm/pip/…) — never vendor these into the kit.
    - `/gsd:verify-work` plus `review-code`, `cso` (security), and `design-review` (UI matches the approved design) before you consider a phase done. Commit and push after every phase.
    - Independent factory QA still gates production regardless of your own verification.
 4. Commit and push to origin after every phase at minimum. The remote already exists.
