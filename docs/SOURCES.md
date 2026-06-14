@@ -100,7 +100,14 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 
 ## Reference catalog
 
-### VoltAgent/awesome-agent-skills
+### TheJambo/awesome-testing — testing knowledge index (reference, not importable)
+- **Commit:** `4c75061` (2026-06-12) · CC0 · https://github.com/TheJambo/awesome-testing
+- **What:** a curated link list of testing resources/tools (API, security, AI&LLM, visual, e2e, performance, a11y, test-data, books, blogs). Links, not skills/code — nothing to vendor.
+- **Already covered by the factory:** API testing, security (`cso`), accessibility (`a11y-playwright-testing`), e2e (`playwright-*`), exploratory/smoke, contract testing — the QA stack is strong here.
+- **Gaps it surfaces worth considering (not yet adopted):**
+  1. **Visual regression** — the factory has `design-review` (subjective AI visual QA) but no automated baseline screenshot/DOM regression. Playwright's native `toHaveScreenshot()` would catch UI regressions on every change with zero new deps — a real change-safety + experience-rule win.
+  2. **AI/LLM-product testing** — `promptfoo` (test/red-team prompts + RAG), `AgentSkeptic` (verify agent workflows via DB state). Relevant only when the factory *builds an AI-powered product*; the QA gate could add an LLM-eval/red-team pass for those.
+- **Status:** reference only; the two gaps above are candidate QA additions pending founder go-ahead.
 - **Commit:** `0e6e589` (2026-06-05) — curated index of 1,400+ skills; snapshot at `docs/reference/skill-catalog.md`.
 - **Shortlist for future import** (gaps this factory still has):
   - **getsentry/** (30+ skills) — production observability, error-context code review
