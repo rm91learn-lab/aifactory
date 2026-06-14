@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 15; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 16; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -276,6 +276,10 @@ function html(products) {
   .rn{width:18px;height:18px;border-radius:50%;border:2px solid #2b3650;background:#141b29;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:9px;color:#56627a}
   .rl{height:2px;flex:1;background:#222c40}
   .rn.done{border-color:#3fb950;color:#3fb950;background:#0e1f14}
+  .rn.fail{border-color:#f0716f;color:#f0716f;background:#1f1314}
+  .bn.fail .bnc{border-color:#f0716f;color:#f0716f;background:#1f1314}
+  .bn.fail .bl2{color:#f0716f}
+  .bdg.fail{color:#f0716f;border-color:#5a2a2a;background:#1f1314}
   .rn.active{border-color:#5b8cff;color:#5b8cff;background:#101a2e}
   .rl.fdone{background:#2f6f4d}
   .ctr{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px}
@@ -391,6 +395,7 @@ var GATE_IDX={strategy:1,prd:2,design:3};
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
 function esc(s){return String(s==null?"":s);}
 function ago(t){var s=Math.max(0,Math.round((Date.now()-new Date(t).getTime())/1000));return s<90?s+"s":s<5400?Math.round(s/60)+"m":Math.round(s/3600)+"h";}
+function qaFailed(p){return /^FAIL/i.test(p.qaVerdict||"")&&!p.building;}
 function stageIdx(p){
   if(p.gate)return GATE_IDX[p.gate.stage]||0;
   var rl=p.runLabel||"";
@@ -401,6 +406,8 @@ function stageIdx(p){
     if(/QA/i.test(rl))return 5;
     return 4;
   }
+  // A failed QA on the current change keeps it AT qa — even if an older version is live in prod.
+  if(qaFailed(p))return 5;
   if((p.health&&p.health.url)||p.deployUrl)return 6;
   if(p.staged||p.qaVerdict)return 5;
   if((p.board&&p.board.length)||(p.tasks&&p.tasks.length))return 4;
@@ -410,18 +417,21 @@ function stageIdx(p){
   return 0;
 }
 function rail(p,big){
-  var idx=stageIdx(p);
+  var idx=stageIdx(p),fail=qaFailed(p);
+  // state of node i: done (passed), fail (this stage failed), active (in progress), or future
+  function st(i){return i<idx?"done":i===idx?(fail?"fail":"active"):"";}
+  function mark(i){return i<idx?"✓":(i===idx&&fail?"✕":String(i+1));}
   var wrap=el("div",big?"bigrail":"rail");
   if(big){
     wrap.appendChild(el("div","bigtrack"));
     var f=el("div","bigfill");f.style.width=(idx/(ST.length-1)*100)+"%";wrap.appendChild(f);
     var nodes=el("div","bignodes");
-    ST.forEach(function(s,i){var n=el("div","bn "+(i<idx?"done":i===idx?"active":""));var c=el("div","bnc",i<idx?"✓":String(i+1));var l=el("div","bl2",s);n.appendChild(c);n.appendChild(l);nodes.appendChild(n);});
+    ST.forEach(function(s,i){var n=el("div","bn "+st(i));var c=el("div","bnc",mark(i));var l=el("div","bl2",s);n.appendChild(c);n.appendChild(l);nodes.appendChild(n);});
     wrap.appendChild(nodes);
   }else{
     ST.forEach(function(s,i){
       if(i)wrap.appendChild(el("div","rl"+(i<=idx?" fdone":"")));
-      wrap.appendChild(el("div","rn "+(i<idx?"done":i===idx?"active":""),i<idx?"✓":String(i+1)));
+      wrap.appendChild(el("div","rn "+st(i),mark(i)));
     });
   }
   return wrap;
@@ -429,8 +439,9 @@ function rail(p,big){
 function badges(p){
   var f=document.createDocumentFragment();
   if(p.gate)f.appendChild(el("span","bdg gate","⏳ approve "+p.gate.stage));
-  if(p.building)f.appendChild(el("span","bdg build","● "+(p.runLabel||"working")));
-  else if(!p.gate)f.appendChild(el("span","bdg"+(p.stage==="ready"?" ready":""),p.stage+(p.version?" · v"+p.version:"")));
+  else if(qaFailed(p))f.appendChild(el("span","bdg fail","✕ QA failed"));
+  else if(p.building)f.appendChild(el("span","bdg build","● "+(p.runLabel||"working")));
+  else f.appendChild(el("span","bdg"+(p.stage==="ready"?" ready":""),p.stage+(p.version?" · v"+p.version:"")));
   if(p.health)f.appendChild(el("span","bdg "+(p.health.up?"live":"down"),p.health.up?"● live · "+p.health.ms+"ms":"● DOWN"));
   return f;
 }
@@ -569,7 +580,13 @@ function renderProduct(v,p){
   var back=el("span","back","← all products");back.onclick=function(){location.hash="";};v.appendChild(back);
   var h=el("div","dh");h.appendChild(el("span","nm",p.name));h.appendChild(badges(p));v.appendChild(h);
   var gnames={strategy:"strategy",prd:"PRD",design:"wireframes"};
-  v.appendChild(el("div","sub",p.gate?("⏳ Waiting for your approval of the "+(gnames[p.gate.stage]||p.gate.stage)+" — review below, then Approve to continue"):((p.pct||0)+"% · "+(p.stateLine||p.stage||""))));
+  var live=(p.health&&p.health.url)||p.deployUrl;
+  var sub=p.gate?("⏳ Waiting for your approval of the "+(gnames[p.gate.stage]||p.gate.stage)+" — review below, then Approve to continue")
+    :qaFailed(p)?"✕ QA failed — fix in progress · production still runs the last QA-approved version"
+    :p.building?("● "+(p.runLabel||"working")+" — "+ST[stageIdx(p)])
+    :live?("● live"+(p.version?" · v"+p.version:"")+(p.staged?" · update staged for QA":""))
+    :p.staged?"staged — awaiting QA":((p.pct||0)+"% · "+(p.stateLine||p.stage||""));
+  v.appendChild(el("div","sub",sub));
   // lifecycle status (always visible): Idea → Strategy → PRD → Design → Build → QA → Live
   var lc=el("div","live show");lc.appendChild(rail(p,true));v.appendChild(lc);
   var ab=approvalBanner(p);if(ab)v.appendChild(ab);
