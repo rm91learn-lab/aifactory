@@ -570,31 +570,59 @@ async function approveProduct(slug, decision, feedback) {
 
 // Kill a product from the dashboard — archive a restorable mirror first, stop
 // any running agent, then remove the local workspace. The GitHub repo is kept.
+// FULL TEARDOWN: archive a restorable backup FIRST (abort if that fails so the
+// only copy is never lost), then take the Cloudflare deployment offline, delete
+// the GitHub repo, and remove the local workspace. Each cloud step is
+// best-effort and reported honestly.
 async function killProduct(slug) {
   const dest = path.join(ROOT, 'products', slug);
   if (!slug || !/^[a-z0-9-]+$/i.test(slug) || !fs.existsSync(dest)) return { ok: false, message: `No product "${slug}".` };
-  const wasLive = fs.existsSync(path.join(dest, 'DEPLOY.json'));
+  // Read deploy/cloud info BEFORE anything is removed.
+  let deploy = null; try { deploy = JSON.parse(fs.readFileSync(path.join(dest, 'DEPLOY.json'), 'utf8')); } catch {}
+  const wasLive = !!deploy;
+  const workerName = deploy?.worker_name || (() => { try { const m = fs.readFileSync(path.join(dest, 'wrangler.toml'), 'utf8').match(/^\s*name\s*=\s*["']([^"']+)["']/m); return m ? m[1] : ''; } catch { return ''; } })();
+  const pagesProject = deploy?.pages_project || deploy?.project || '';
+  const d1Name = deploy?.d1_database?.name || '';
+
+  // Stop work + clear queue/pending state.
   const entry = running.get(slug);
   if (entry) { try { entry.child.kill('SIGTERM'); } catch {} if (entry.watcher) clearInterval(entry.watcher); running.delete(slug); }
   state.queue = state.queue.filter(j => j.product !== slug && j.name !== slug && j.slug !== slug); saveState();
   for (const [cid, a] of pendingApproval) if (a.slug === slug) pendingApproval.delete(cid);
   pendingIdeas.forEach((v, k) => { if (v?.action?.product === slug || v?.action?.name === slug) pendingIdeas.delete(k); });
+
+  // 1) ARCHIVE FIRST — if we can't back it up, abort and delete nothing.
   let archived = '';
   try {
     const archDir = path.join(ROOT, 'archives'); fs.mkdirSync(archDir, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const bundle = path.join(archDir, `${slug}-${stamp}.bundle`);
+    const bundle = path.join(archDir, `${slug}-${new Date().toISOString().replace(/[:.]/g, '-')}.bundle`);
     await gitIn(dest, 'bundle', 'create', bundle, '--all');
     archived = path.relative(ROOT, bundle);
   } catch (err) { log(`kill: archive of ${slug} failed (${err.message})`); }
-  try {
-    const repoUrl = `https://github.com/${CONFIG.githubOwner}/${slug}`;
-    const line = `\n- **${slug}** removed via dashboard ${new Date().toISOString()} — local archive: ${archived || 'FAILED'}; GitHub repo retained: ${repoUrl}${wasLive ? '; was live (Cloudflare deployment left intact — tear down separately if wanted)' : ''}.`;
-    fs.appendFileSync(path.join(ROOT, 'docs', 'DECOMMISSIONS.md'), line);
-  } catch {}
-  try { fs.rmSync(dest, { recursive: true, force: true }); } catch (err) { return { ok: false, message: `Could not remove "${slug}": ${err.message}` }; }
+  if (!archived) return { ok: false, message: `⚠️ Couldn't create a backup of "${slug}" — aborted. Nothing was deleted (so the only copy isn't lost).` };
+
+  // 2) Take the Cloudflare deployment offline (best-effort).
+  const run = (args, cwd) => execFileP('npx', ['--yes', 'wrangler', ...args], { cwd, timeout: 180000, env: { ...process.env, CI: '1' } });
+  let cf = wasLive || workerName || pagesProject || d1Name ? [] : 'nothing deployed';
+  if (Array.isArray(cf)) {
+    if (workerName) { try { await run(['delete', workerName], dest); cf.push('worker deleted (site offline)'); } catch (e) { cf.push('worker delete FAILED'); log(`kill cf worker ${slug}: ${e.stderr || e.message}`); } }
+    if (pagesProject) { try { await run(['pages', 'project', 'delete', pagesProject, '--yes'], dest); cf.push('pages deleted'); } catch (e) { cf.push('pages delete FAILED'); log(`kill cf pages ${slug}: ${e.stderr || e.message}`); } }
+    if (d1Name) { try { await run(['d1', 'delete', d1Name, '-y'], dest); cf.push('database deleted'); } catch (e) { cf.push('database delete FAILED'); log(`kill cf d1 ${slug}: ${e.stderr || e.message}`); } }
+    cf = cf.length ? cf.join(', ') : 'nothing to tear down';
+  }
+
+  // 3) Delete the GitHub repo (needs the delete_repo scope; reported honestly).
+  let repo = 'kept';
+  try { await execFileP('gh', ['repo', 'delete', `${CONFIG.githubOwner}/${slug}`, '--yes'], { timeout: 60000 }); repo = 'deleted'; }
+  catch (e) { const m = `${e.stderr || ''} ${e.message || ''}`; repo = /delete_repo|needs the|scope|HTTP 403|must have admin/i.test(m) ? 'NOT deleted — grant the scope once: `gh auth refresh -h github.com -s delete_repo`' : 'delete FAILED (see daemon log)'; log(`kill repo ${slug}: ${m}`); }
+
+  // 4) Remove the local workspace.
+  try { fs.rmSync(dest, { recursive: true, force: true }); } catch (err) { return { ok: false, message: `Cloud resources handled, but couldn't remove the local copy of "${slug}": ${err.message}` }; }
+
+  // 5) Record + report.
+  try { fs.appendFileSync(path.join(ROOT, 'docs', 'DECOMMISSIONS.md'), `\n- **${slug}** full-teardown via dashboard ${new Date().toISOString()} — archive: ${archived}; Cloudflare: ${cf}; GitHub repo: ${repo}.`); } catch {}
   refreshDashboard();
-  const note = `🗑 Removed "${slug}".${archived ? ' A restorable archive was saved and the' : ' The'} GitHub repo is kept as backup.${wasLive ? ' Its live site is still up — tell me if you want that torn down too.' : ''}`;
+  const note = `🗑 Removed "${slug}" (full teardown).\n• Backup archived: ${archived}\n• Cloudflare: ${cf}\n• GitHub repo: ${repo}`;
   for (const c of CONFIG.allowedChatIds) send(c, note);
   return { ok: true, message: note };
 }

@@ -440,7 +440,8 @@ function approveAct(name,decision,feedback){
     .catch(function(){alert("Could not reach the factory daemon.");});
 }
 function killAct(name){
-  if(!confirm("Remove \\""+name+"\\" from the factory?\\n\\nThis archives a restorable copy, keeps the GitHub repo, and deletes the local workspace and its card. Any running work for it stops."))return;
+  if(!confirm("⚠️ FULL TEARDOWN of \\""+name+"\\" — this cannot be undone (except from the local backup).\\n\\nIt will:\\n• archive a restorable backup FIRST\\n• take the live site OFFLINE (delete the Cloudflare worker + database)\\n• DELETE the GitHub repo\\n• stop any running work and remove the local copy + card\\n\\nType-check the name above. Continue?"))return;
+  if(prompt("To confirm full teardown, type the product name exactly:")!==name){alert("Name didn't match — nothing was deleted.");return;}
   fetch("/kill",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({product:name})})
     .then(function(r){return r.json();}).then(function(r){if(r&&r.ok===false)alert(r.message||"Could not remove it.");else{if(location.hash)location.hash="";tick();}})
     .catch(function(){alert("Could not reach the factory daemon.");});
