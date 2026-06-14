@@ -11,6 +11,14 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 - **Modified:** all `@~/.claude/gsd-core/...` and `$HOME/.claude/gsd-core/...` references rewritten to project-local `.claude/gsd-core/...` (what the official installer does for `--local` installs).
 - **Excluded:** runtime hooks (update checker, context monitor, prompt guards, statusline) — convenience features requiring installer execution; installable later via `npx @opengsd/gsd-core@latest --claude --local`. Also excluded: src/tests/build tooling (not needed at runtime).
 
+### phuryn/pm-skills — product-management frameworks
+- **Commit:** `d384f0c` (2026-06-06) · MIT · https://github.com/phuryn/pm-skills
+- **Why:** 68 PM skills encoding real frameworks (Torres/Cagan/Savoia). Directly strengthens the Strategy and PRD gates — the factory's known weak spot (the hrms-app mediocrity lesson).
+- **Imported (25, curated, conflict-free):** `product-strategy, product-vision, value-proposition, business-model, lean-canvas, startup-canvas, swot-analysis, porters-five-forces, pestle-analysis, ansoff-matrix, market-sizing, market-segments, competitor-analysis, ideal-customer-profile, user-personas, pricing-strategy, monetization-strategy, north-star-metric, opportunity-solution-tree, customer-journey-map, prioritization-frameworks, prioritize-features, pre-mortem, strategy-red-team, intended-vs-implemented` → `.claude/skills/` (each a SKILL.md folder).
+- **Wired in:** strategy-prompt.md (apply the relevant framework skills + `strategy-red-team`); prd-prompt.md (`prioritization-frameworks` for MVP scope, `pre-mortem` for risks); qa-prompt.md (`intended-vs-implemented` as a gating check).
+- **Excluded — planning overlap (route to GSD, per "don't mix planning systems"):** `create-prd`, `outcome-roadmap`, `sprint-plan`, `brainstorm-okrs`, `user-stories` — GSD owns requirements/roadmap/execution.
+- **Excluded — out of scope / covered elsewhere:** GTM + analytics + growth skills (gtm-*, ab-test-analysis, cohort-analysis, metrics-dashboard, sql-queries — kit has `data:*`/`marketing:*` plugins), legal (`draft-nda`, `privacy-policy`), and clearly-irrelevant (`review-resume`, `grammar-check`). All remain available from the upstream marketplace if a gap appears.
+
 ### mvanhorn/last30days-skill — recency research
 - **Commit:** `1221584` (2026-06-06, v3.3.2) · MIT · https://github.com/mvanhorn/last30days-skill
 - **Why:** Recency-weighted, engagement-ranked research across Reddit, X, YouTube, TikTok, Instagram, Hacker News, GitHub, Polymarket, Bluesky and the web — "what are people actually saying about X in the last 30 days." Complements the strategy/research gates (real-world domain signal beyond static web search) and the experience rule (how the best products in a space are discussed and solved right now).

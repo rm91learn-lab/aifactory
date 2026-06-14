@@ -10,7 +10,7 @@ The approved `STRATEGY.md` at the repo root is your contract — read it first. 
 
 1. **Run `/gsd:new-project`** to turn the approved strategy into requirements and a phased roadmap under `.planning/`. This runs headless — no human is available. Wherever the workflow would ask the founder a question, make the pragmatic call yourself and append it to `.planning/ASSUMPTIONS.md` (one line: the question, your decision, why). Do not stall.
    - The data/domain model in the roadmap MUST match STRATEGY.md's domain model: real related entities, the hierarchy/org where the domain has one — never a TEXT column or free-text field standing in for what should be a related entity.
-   - Scope ruthlessly to the MVP defined in STRATEGY.md: the smallest vertical slice that proves the thesis end to end. Park everything else in later phases of the roadmap.
+   - Scope ruthlessly to the MVP defined in STRATEGY.md: the smallest vertical slice that proves the thesis end to end. Park everything else in later phases of the roadmap. Use the `prioritization-frameworks` skill (via the Skill tool) to decide what's in vs. out of the MVP, and run the `pre-mortem` skill on the plan to surface what would make it fail — fold the top risks into the PRD's risks/open-questions. (These are analysis lenses; GSD still owns the roadmap/requirements — do not generate a competing plan.)
 
 2. **Write `PRD.md`** at the repo root — the founder-facing product requirements document, concrete not fluffy:
    1. **What we're building & for whom** — one tight paragraph (pull from the strategy).

@@ -39,6 +39,10 @@ API routes existing does NOT mean a module shipped. A module a user cannot reach
 - Also verify the LIVE/staged version under test is the CURRENT build (not a stale deploy): the version's git SHA / build marker must match HEAD.
 - "Backend route exists but no UI" is the single most important failure to catch. Treat the product as a non-technical client would: if they can't see it and click it, it isn't done.
 
+## INTENDED-VS-IMPLEMENTED CHECK (gating) — does the build match its own contract?
+
+Use the `intended-vs-implemented` skill (via the Skill tool) to find the gap between what the approved STRATEGY.md / PRD.md / wireframes promise and what the code actually does — the class of defect generic scanners miss because they have no model of intent. Any promised capability, permission, or flow that the implementation silently omits, fakes, or contradicts is a finding; a material gap on a primary feature ⇒ FAIL.
+
 ## DOMAIN-COHERENCE CHECK (mandatory, gating) — is it a real product or a pile of modules?
 
 A product can pass the showroom check (every module reachable) and still be mediocre because the modules are siloed — disconnected screens that don't share a real domain model. This check catches that.
