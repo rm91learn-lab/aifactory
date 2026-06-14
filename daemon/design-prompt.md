@@ -19,7 +19,7 @@ Every product MUST deliver an amazing customer experience. Functional is not the
 **deliberate → research → evaluate → deliberate → finalize.**
 
 1. **Deliberate** the journey: what is the user actually trying to accomplish, in the fewest possible steps?
-2. **Research** how the best-in-class modern products solve this exact flow today (not how old/legacy software did it). Name the references.
+2. **Research** how the best-in-class modern products solve this exact flow today (not how old/legacy software did it). Name the references. The `last30days` skill is available for real, recent user sentiment on existing tools' UX (what people love/hate about competitors' flows) — use it when it would sharpen the decision.
 3. **Evaluate** 2–3 concrete UX approaches against click/step count and friction.
 4. **Deliberate** the trade-offs and pick the lowest-friction one that still fits the domain.
 5. **Finalize** the wireframe for it, and note the resulting step count.

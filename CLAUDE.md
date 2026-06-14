@@ -31,7 +31,7 @@ Three imported systems plus custom DevOps skills, each owning a distinct stage. 
 
 **No product code is written until the human approves, at three gates, in order.** A new build proceeds gate-by-gate; each gate runs a headless agent that produces an artifact and stops, the daemon sends the founder a plain-language summary on Telegram, and nothing advances until they Approve / revise / Cancel. Founder edits re-run that stage. The approved artifacts are the build's contract.
 
-1. **Strategy (step 1, `office-hours`)** — `daemon/strategy-prompt.md` → `STRATEGY.md`: problem, thesis, **domain model (entities + how they relate + hierarchy/org where the domain has one)**, MVP scope, what "good" looks like, risks. Plus `STRATEGY-SUMMARY.txt`.
+1. **Strategy (step 1, `office-hours`)** — `daemon/strategy-prompt.md` → `STRATEGY.md`: problem, thesis, **domain model (entities + how they relate + hierarchy/org where the domain has one)**, MVP scope, what "good" looks like, risks. Plus `STRATEGY-SUMMARY.txt`. Grounded by the **`last30days`** skill — a Gartner-style industry-analyst pass that pulls recency-weighted, engagement-ranked market signal (Reddit/X/YouTube/HN/…) on the domain; works keyless, sharper with X cookies + `yt-dlp` (installed).
 2. **PRD (step 2, `/gsd:new-project`)** — `daemon/prd-prompt.md` → `PRD.md` + `.planning/` roadmap/requirements built ON the approved domain model. Plus `PRD-SUMMARY.txt`.
 3. **Design / wireframes (step 5, `design-consultation` + `design-html`)** — `daemon/design-prompt.md` → a static `design/` folder the daemon serves at `/preview/<slug>/` so the founder views the screens on their phone before approving. Plus `DESIGN-SUMMARY.txt`. Non-UI products write `DESIGN-SKIP.txt` and this gate auto-skips.
 

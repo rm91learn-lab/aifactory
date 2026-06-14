@@ -4,7 +4,11 @@ PRODUCT IDEA (founder, verbatim):
 {{IDEA}}
 {{FEEDBACK}}
 
-Deliberate hard and research the domain (web + domain knowledge — how do real, good products in this space actually work?). Then write two files at the repo root and commit them:
+Deliberate hard and research the domain (web + domain knowledge — how do real, good products in this space actually work?).
+
+**Industry-analyst research (required): run the `last30days` skill.** Before writing the strategy, use the `last30days` skill (via the Skill tool — follow its SKILL.md protocol) to pull recency-weighted, engagement-ranked signal on this domain from the last 30 days: what users actually complain about and ask for, how incumbents/competitors are being received, what's trending. Treat it like a Gartner-style analyst briefing that grounds the strategy in current reality rather than assumptions. Run one or two focused queries (e.g. the core user problem, and the main competitor/category). It works without any API keys (keyless public sources); use whatever signal it returns, and note in STRATEGY.md if evidence was thin. Fold the findings into the problem framing, "what good looks like," and the risks — and cite notable signals.
+
+Then write two files at the repo root and commit them:
 
 **STRATEGY.md** — tight and concrete (≈1–2 pages, not an essay):
 1. **Problem & who has it** — the specific user/buyer and their real pain.
