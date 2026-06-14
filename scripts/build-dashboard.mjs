@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const UI_VERSION = 14; // bump when the page's code changes; open tabs self-reload
+const UI_VERSION = 15; // bump when the page's code changes; open tabs self-reload
 
 function git(cwd, ...args) {
   try {
@@ -172,8 +172,11 @@ export function collectProducts(root = ROOT) {
       has: {
         strategy: fs.existsSync(path.join(dir, 'STRATEGY.md')),
         prd: fs.existsSync(path.join(dir, 'PRD.md')),
-        design: fs.existsSync(path.join(dir, 'design')),
+        design: fs.existsSync(path.join(dir, 'design', 'index.html')),
         designSkip: fs.existsSync(path.join(dir, 'DESIGN-SKIP.txt')),
+        roadmap: fs.existsSync(path.join(planning, 'ROADMAP.md')),
+        requirements: fs.existsSync(path.join(planning, 'REQUIREMENTS.md')),
+        finalReport: fs.existsSync(path.join(dir, 'FINAL-REPORT.md')),
       },
       gate: (() => {
         const g = readJson(path.join(dir, '.gate.json'));
@@ -447,6 +450,7 @@ function approvalBanner(p){
   var w=el("div","appr");
   w.appendChild(el("div","appr-h","⏳ Awaiting your approval — "+(names[p.gate.stage]||p.gate.stage)));
   if(p.gate.stage==="design"){var a=el("a","btn bl","🎨 View wireframes");a.href="/preview/"+encodeURIComponent(p.name)+"/";a.target="_blank";a.onclick=function(e){e.stopPropagation();};w.appendChild(a);}
+  else{var rf=el("a","btn bl","📖 Read the full "+p.gate.stage);rf.href="/doc/"+encodeURIComponent(p.name)+"/"+(p.gate.stage==="prd"?"PRD.md":"STRATEGY.md");rf.target="_blank";rf.onclick=function(e){e.stopPropagation();};w.appendChild(rf);}
   if(p.gate.summary)w.appendChild(el("div","appr-s",p.gate.summary));
   var row=el("div","appr-row");
   var ap=el("button","btn go","✅ Approve & continue");ap.onclick=function(e){e.stopPropagation();approveAct(p.name,"approve");};
@@ -541,6 +545,24 @@ function qaPanel(p){
   w.appendChild(rep);
   return w;
 }
+function docLink(slug,rel,label,icon){var a=el("a","btn",icon+" "+label);a.href="/doc/"+encodeURIComponent(slug)+"/"+rel;a.target="_blank";return a;}
+function docsPanel(p){
+  var w=el("div","qa");
+  var h=el("div","qa-h");h.appendChild(el("span",null,"📂 Documents"));w.appendChild(h);
+  w.appendChild(el("div","ql","what the factory decided at each gate — tap to read"));
+  var row=el("div","acts");
+  var hs=p.has||{};
+  if(hs.strategy)row.appendChild(docLink(p.name,"STRATEGY.md","Strategy","📋"));
+  if(hs.prd)row.appendChild(docLink(p.name,"PRD.md","PRD","📋"));
+  if(hs.roadmap)row.appendChild(docLink(p.name,".planning/ROADMAP.md","Roadmap","🗺"));
+  if(hs.requirements)row.appendChild(docLink(p.name,".planning/REQUIREMENTS.md","Requirements","✅"));
+  if(hs.design){var wf=el("a","btn bl","🎨 Wireframes");wf.href="/preview/"+encodeURIComponent(p.name)+"/";wf.target="_blank";row.appendChild(wf);}
+  if(hs.finalReport)row.appendChild(docLink(p.name,"FINAL-REPORT.md","Build report","📄"));
+  if(p.docs&&/^https?:/.test(p.docs)){var d=el("a","btn","📘 Product docs");d.href=p.docs;d.target="_blank";row.appendChild(d);}
+  if(!row.children.length)row.appendChild(el("div","qitem dim","Documents appear here as each approval gate completes (Strategy → PRD → Wireframes)."));
+  w.appendChild(row);
+  return w;
+}
 function renderProduct(v,p){
   var back=el("span","back","← all products");back.onclick=function(){location.hash="";};v.appendChild(back);
   var h=el("div","dh");h.appendChild(el("span","nm",p.name));h.appendChild(badges(p));v.appendChild(h);
@@ -557,6 +579,7 @@ function renderProduct(v,p){
   var rc=el("button","btn bl","＋ request a change");rc.onclick=function(){var t=prompt("Describe the change or bug for "+p.name+":");if(t)sendReq(p.name,"change",t);};acts.appendChild(rc);
   var rm=el("button","btn","🗑 remove");rm.onclick=function(){killAct(p.name);};acts.appendChild(rm);
   v.appendChild(acts);
+  v.appendChild(docsPanel(p));
   var live=liveView(p);live.classList.remove("show");v.appendChild(live);
   wl.onclick=function(){live.classList.toggle("show");wl.classList.toggle("on");};
   if(p.building){live.classList.add("show");wl.classList.add("on");}

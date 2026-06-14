@@ -939,6 +939,68 @@ function readBody(req, cb) {
   req.on('end', () => { try { cb(JSON.parse(b || '{}')); } catch { cb(null); } });
 }
 const sendJson = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
+// --- in-dashboard document reader: render a product's gate docs as clean HTML --
+const DOC_WHITELIST = {
+  'STRATEGY.md': 'Strategy', 'STRATEGY-SUMMARY.txt': 'Strategy summary',
+  'PRD.md': 'PRD', 'PRD-SUMMARY.txt': 'PRD summary', 'DESIGN-SUMMARY.txt': 'Design summary',
+  'FINAL-REPORT.md': 'Final report', 'QA-REPORT.md': 'QA report', 'IDEA.md': 'Idea',
+  '.planning/ROADMAP.md': 'Roadmap', '.planning/REQUIREMENTS.md': 'Requirements', '.planning/PROJECT.md': 'Project',
+};
+// Minimal, safe markdown → HTML (escape-first; only http/relative links allowed).
+function mdToHtml(md) {
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = t => esc(t)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, txt, u) => /^(https?:\/\/|\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${txt}</a>` : txt);
+  const lines = String(md).replace(/\r\n/g, '\n').split('\n');
+  let html = '', i = 0, inList = false, listType = '';
+  const closeList = () => { if (inList) { html += listType === 'ol' ? '</ol>' : '</ul>'; inList = false; } };
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^```/.test(line)) { closeList(); i++; let code = ''; while (i < lines.length && !/^```/.test(lines[i])) code += lines[i++] + '\n'; i++; html += '<pre><code>' + esc(code) + '</code></pre>'; continue; }
+    if (/\|/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
+      closeList();
+      const cells = r => r.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+      html += '<table><thead><tr>' + cells(line).map(c => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>'; i += 2;
+      while (i < lines.length && /\|/.test(lines[i]) && lines[i].trim()) html += '<tr>' + cells(lines[i++]).map(c => '<td>' + inline(c) + '</td>').join('') + '</tr>';
+      html += '</tbody></table>'; continue;
+    }
+    let m;
+    if (m = line.match(/^(#{1,6})\s+(.*)/)) { closeList(); const n = m[1].length; html += `<h${n}>${inline(m[2])}</h${n}>`; i++; continue; }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(line)) { closeList(); html += '<hr>'; i++; continue; }
+    if (m = line.match(/^\s*>\s?(.*)/)) { closeList(); html += '<blockquote>' + inline(m[1]) + '</blockquote>'; i++; continue; }
+    if (m = line.match(/^\s*[-*]\s+\[([ x])\]\s+(.*)/i)) { if (!inList || listType !== 'ul') { closeList(); html += '<ul>'; inList = true; listType = 'ul'; } html += '<li>' + (m[1].toLowerCase() === 'x' ? '☑ ' : '☐ ') + inline(m[2]) + '</li>'; i++; continue; }
+    if (m = line.match(/^\s*[-*]\s+(.*)/)) { if (!inList || listType !== 'ul') { closeList(); html += '<ul>'; inList = true; listType = 'ul'; } html += '<li>' + inline(m[1]) + '</li>'; i++; continue; }
+    if (m = line.match(/^\s*\d+\.\s+(.*)/)) { if (!inList || listType !== 'ol') { closeList(); html += '<ol>'; inList = true; listType = 'ol'; } html += '<li>' + inline(m[1]) + '</li>'; i++; continue; }
+    if (!line.trim()) { closeList(); i++; continue; }
+    closeList(); html += '<p>' + inline(line) + '</p>'; i++;
+  }
+  closeList();
+  return html;
+}
+function docPage(slug, title, body) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · ${slug}</title>
+<style>body{background:#0a0d14;color:#e6edf3;font:16px/1.65 -apple-system,'Segoe UI',Roboto,sans-serif;max-width:760px;margin:0 auto;padding:0 18px 80px}
+a{color:#5b8cff}h1,h2,h3,h4{line-height:1.3;margin:1.4em 0 .5em}h1{font-size:25px}h2{font-size:20px;border-bottom:1px solid #1c2638;padding-bottom:6px}h3{font-size:17px}
+code{background:#141b29;border:0.5px solid #232f47;border-radius:5px;padding:1px 5px;font-size:.9em}pre{background:#0f1623;border:0.5px solid #232f47;border-radius:10px;padding:14px;overflow:auto}pre code{border:0;background:none;padding:0}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}th,td{border:0.5px solid #232f47;padding:7px 10px;text-align:left}th{background:#0f1623}
+blockquote{border-left:3px solid #2d4373;margin:10px 0;padding:4px 14px;color:#aeb9c9}ul,ol{padding-left:24px}li{margin:3px 0}hr{border:0;border-top:1px solid #1c2638;margin:18px 0}
+.top{position:sticky;top:0;background:#0a0d14;padding:12px 0;border-bottom:1px solid #1c2638;margin-bottom:18px;font-size:13px;color:#7c8aa0;display:flex;gap:14px;align-items:baseline}</style></head>
+<body><div class="top"><a href="/#p=${encodeURIComponent(slug)}">← ${slug}</a><b style="color:#e6edf3">${title}</b></div>${body}</body></html>`;
+}
+function serveDoc(url, res) {
+  const rest = decodeURIComponent(url.slice('/doc/'.length));
+  const slug = rest.split('/')[0];
+  const rel = rest.slice(slug.length + 1);
+  if (!slug || !/^[a-z0-9-]+$/i.test(slug) || !DOC_WHITELIST[rel]) { res.writeHead(404); res.end('not found'); return; }
+  const file = path.join(ROOT, 'products', slug, rel);
+  const title = DOC_WHITELIST[rel];
+  if (!fs.existsSync(file)) { res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' }); res.end(docPage(slug, title, '<p>This document has not been created yet.</p>')); return; }
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(docPage(slug, title, mdToHtml(fs.readFileSync(file, 'utf8'))));
+}
 function dashAuthed(req) {
   if (!VIEW_PW) return true; // no password set → open
   // Direct access on the iMac (Host: localhost/127.0.0.1) needs no login; only
@@ -1001,6 +1063,9 @@ http.createServer((req, res) => {
         const r = await killProduct(String(j.product));
         sendJson(res, r.ok ? 200 : 400, r);
       });
+    } else if (url.startsWith('/doc/')) {
+      // Render a product's gate document (Strategy/PRD/Roadmap/…) as a readable page.
+      serveDoc(url, res);
     } else if (url.startsWith('/preview/')) {
       // Serve a product's wireframes (design/) for founder approval at step 5.
       serveWireframe(url, res);
