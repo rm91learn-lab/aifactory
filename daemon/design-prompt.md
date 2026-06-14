@@ -33,6 +33,8 @@ Hard rules:
 
 1. **Run `design-consultation`** to establish a design system (tokens: colors, type, spacing, components, voice) appropriate for this product and its users. Record it (e.g. `design/DESIGN-SYSTEM.md`).
 
+   **Taste (anti-slop) — required:** apply the `design-taste-frontend` skill to infer the right design direction from the brief (don't default to a generic aesthetic), and pull the matching aesthetic skill for the vibe — `high-end-visual-design` (premium/agency), `minimalist-ui` (clean/editorial), or `industrial-brutalist-ui` (raw/technical). The result must look intentional and premium, never templated/bootstrap.
+
 2. **Run `design-html`** to produce wireframes / high-fidelity mockups of the KEY screens — the ones that cover the primary journeys in the PRD and show the domain backbone (e.g. for an HRMS: the org/people directory, an entity detail showing its relationships, the main create/edit flow, the dashboard). Cover the MVP's core screens, not every edge screen.
 
 3. **Output the wireframes as self-contained static HTML in a `design/` folder at the repo root**, viewable as plain files with NO build step and NO dev server (the factory serves this folder directly):

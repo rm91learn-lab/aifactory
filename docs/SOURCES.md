@@ -11,6 +11,14 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 - **Modified:** all `@~/.claude/gsd-core/...` and `$HOME/.claude/gsd-core/...` references rewritten to project-local `.claude/gsd-core/...` (what the official installer does for `--local` installs).
 - **Excluded:** runtime hooks (update checker, context monitor, prompt guards, statusline) — convenience features requiring installer execution; installable later via `npx @opengsd/gsd-core@latest --claude --local`. Also excluded: src/tests/build tooling (not needed at runtime).
 
+### leonxlnx/taste-skill — anti-slop frontend design taste
+- **Commit:** `01d8504` (2026-06-12, v1.0.0) · MIT · https://github.com/leonxlnx/taste-skill
+- **Why:** The "anti-slop frontend framework" — taste/aesthetic judgment so AI-built UIs look intentional and premium, not templated. Directly serves the Design gate and the experience rule.
+- **Imported (7, prompt-only, key-free):** `taste-skill` (name: `design-taste-frontend`), `soft-skill` (`high-end-visual-design`), `minimalist-skill` (`minimalist-ui`), `brutalist-skill` (`industrial-brutalist-ui`), `redesign-skill` (`redesign-existing-projects`), `output-skill` (`full-output-enforcement` — anti-truncation/no-placeholders), `image-to-code-skill` (`image-to-code`) → `.claude/skills/`. No name/folder collisions.
+- **Wired in:** design-prompt.md (apply `design-taste-frontend` + the matching aesthetic so wireframes are premium); build-prompt.md (`image-to-code` to translate wireframes faithfully + `full-output-enforcement` so UI code ships complete).
+- **Excluded:** the image-generation skills that need external API keys (`brandkit`, `imagegen-frontend-web`, `imagegen-frontend-mobile`, `gpt-tasteskill` — OpenAI/Gemini/Stability), `stitch-skill` (Google-Stitch-specific), and `taste-skill-v1` (superseded). The `research/laziness/` docs (LLM-laziness root-causes + remediation) are a useful reference but not a skill — left upstream. All available from the repo if needed later.
+- **Complements, not replaces:** the existing design pipeline (gstack `design-consultation`/`design-html`/`design-review`, `frontend-design`) — these add the taste/aesthetic judgment layer on top.
+
 ### phuryn/pm-skills — product-management frameworks
 - **Commit:** `d384f0c` (2026-06-06) · MIT · https://github.com/phuryn/pm-skills
 - **Why:** 68 PM skills encoding real frameworks (Torres/Cagan/Savoia). Directly strengthens the Strategy and PRD gates — the factory's known weak spot (the hrms-app mediocrity lesson).
