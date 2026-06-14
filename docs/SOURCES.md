@@ -57,6 +57,12 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 
 ## Rejected
 
+### refactoringhq/tolaria — end-user app, AGPL (not importable)
+- **Commit:** `0937e23` (2026-06-14) · **AGPL-3.0** · https://github.com/refactoringhq/tolaria
+- **What it is:** a Tauri desktop app (macOS/Win/Linux, 1,870 files, Rust + Vite/React) for managing markdown knowledge bases — a files-first/git-first "second brain" / AI-context vault by Luca Ronin (Refactoring.fm). Ships an MCP server so agents can read/write the vault.
+- **Why rejected (two independent reasons):** (1) **Not a skill/agent/command toolkit** — it's a finished end-user product, not capabilities the factory imports (unlike last30days). Its `.claude/commands` (`laputa-*`) are tied to the author's personal Todoist/Laputa dev workflow, not generalizable. (2) **AGPL-3.0 is incompatible with the factory's model** — the factory builds products that are handed to paying customers; AGPL's network-copyleft would impose source-disclosure obligations on derivatives. The factory already has files-first git repos + `.planning/` markdown, so there's no capability gap it fills.
+- **Note:** still a solid *personal* tool if the founder wants an Obsidian-style vault for their own notes — but that's separate from the factory toolkit, and nothing from it was imported.
+
 ### gsd-build/get-shit-done
 - **Commit:** `bdcaab2` (2026-05-31) — **archived.** README redirects to open-gsd/gsd-core; identical command/agent set at archive time, no development since. gsd-core supersedes it (MVP mode, milestone-prefixed phases, better model routing).
 
