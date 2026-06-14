@@ -67,6 +67,15 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 ### github.com/resources/articles/ai-in-software-development — framing only
 - Editorial, no code. Its six SDLC stages (plan, design, develop, test, deploy, maintain) informed the pipeline structure in CLAUDE.md.
 
+## Evaluated — trial in progress
+
+### chopratejas/headroom — context-compression proxy (cost lever)
+- **Commit:** `01fdedc` (2026-06-13, v0.25.0) · Apache-2.0 · https://github.com/chopratejas/headroom · PyPI `headroom-ai`, npm `headroom-ai`
+- **What:** "Context compression layer for AI agents" — a local-first proxy/library/MCP that compresses what agents read (tool outputs, logs, RAG, history) before it reaches the LLM. Claims 60–95% fewer tokens via 6 algorithms, reversible. Not a skill — it's infrastructure (a 3,200-file Rust+Python app); NOT vendored into the kit.
+- **Why it matters here:** the factory runs many large-context Opus agents (strategy/PRD/design/build/QA); compression could materially cut token cost. Counter-risk: it's a lossy layer between every agent and the model, which directly threatens the factory's quality-first promise — so adoption is gated on validation (per the iron rule).
+- **Phase-1 trial (2026-06-14, library in a throwaway venv):** installs cleanly; light deps (litellm, tiktoken, tokenizers, ast-grep — no torch/transformers); safe. On a dense 62K-token QA report it did **0% reduction with 100% fidelity** — it is **lossless-by-default and PROTECTS user/authored content** (`transforms_applied: router:protected:user_message`). Verdict: **low quality-risk, but savings UNPROVEN** in standalone use — the 60–95% only applies to redundant tool-result traffic seen through the proxy.
+- **Phase-2 (decisive, pending an idle factory):** run a real product build through `headroom proxy` (point spawned `claude -p` agents at it via base-URL) and A/B vs baseline — compare token savings AND QA pass/quality. Adopt factory-wide only if quality holds and savings are real. Adoption path if it passes: `headroom` Claude Code plugin (`headroom-agent-hooks` / openclaw) or run the proxy as a service; never vendor the repo.
+
 ## Reference catalog
 
 ### VoltAgent/awesome-agent-skills
