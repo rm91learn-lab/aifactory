@@ -5,7 +5,7 @@ Evaluated 2026-06-12. Each source was cloned, studied, and either imported, kept
 ## Imported
 
 ### open-gsd/gsd-core — orchestration spine
-- **Commit:** `83e87e3` (2026-06-14) · MIT · https://github.com/open-gsd/gsd-core
+- **Commit:** `a375c4b` (2026-06-14) · MIT · https://github.com/open-gsd/gsd-core
 - **Why:** The most actively maintained spec-driven SDLC orchestrator for Claude Code (successor to get-shit-done). Phase loop (discuss → plan → execute → verify), wave-based parallel subagent execution, autonomous mode, file-based state in `.planning/`.
 - **Imported:** `commands/gsd/` → `.claude/commands/gsd/` (69 commands); `agents/` → `.claude/agents/` (33 agents); `gsd-core/{workflows,references,templates,contexts}` → `.claude/gsd-core/`.
 - **Modified:** all `@~/.claude/gsd-core/...` and `$HOME/.claude/gsd-core/...` references rewritten to project-local `.claude/gsd-core/...` (what the official installer does for `--local` installs).
