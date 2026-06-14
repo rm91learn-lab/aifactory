@@ -22,5 +22,6 @@
     "autoIncident": true,
     "incidentCooldownMinutes": 60
   },
-  "tunnelUrl": "https://superb-enables-continues-currently.trycloudflare.com"
+  "tunnelUrl": "https://superb-enables-continues-currently.trycloudflare.com",
+  "vaultPath": "/Users/rohitrmaini/AI-Factory-Vault"
 }

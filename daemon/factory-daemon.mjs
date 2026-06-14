@@ -17,6 +17,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { buildDashboard, statusText } from '../scripts/build-dashboard.mjs';
+import { buildVault, vaultDecommission } from '../scripts/build-vault.mjs';
 import { monitorPass, healthText } from '../scripts/monitor.mjs';
 import { makeLineParser, applyTaskOps } from '../scripts/agent-stream.mjs';
 import { checkUpstreams } from '../scripts/check-upstreams.mjs';
@@ -621,6 +622,7 @@ async function killProduct(slug) {
 
   // 5) Record + report.
   try { fs.appendFileSync(path.join(ROOT, 'docs', 'DECOMMISSIONS.md'), `\n- **${slug}** full-teardown via dashboard ${new Date().toISOString()} — archive: ${archived}; Cloudflare: ${cf}; GitHub repo: ${repo}.`); } catch {}
+  try { vaultDecommission(slug); } catch {}
   refreshDashboard();
   const note = `🗑 Removed "${slug}" (full teardown).\n• Backup archived: ${archived}\n• Cloudflare: ${cf}\n• GitHub repo: ${repo}`;
   for (const c of CONFIG.allowedChatIds) send(c, note);
@@ -674,8 +676,22 @@ async function checkProgress(slug, dest, entry) {
   }
 }
 
+const VAULT_DIR = CONFIG.vaultPath || `${process.env.HOME}/AI-Factory-Vault`;
+let vaultSyncing = false;
+function syncVault() {
+  // Keep the Tolaria vault in sync with the product registry; commit only when
+  // something actually changed (commit no-ops cleanly when nothing is staged).
+  if (vaultSyncing) return; vaultSyncing = true;
+  try { buildVault(ROOT); } catch (e) { log('vault build failed:', e.message); vaultSyncing = false; return; }
+  gitIn(VAULT_DIR, 'add', '-A')
+    .then(() => gitIn(VAULT_DIR, 'commit', '-q', '-m', 'vault: sync product registry'))
+    .catch(() => {}) // nothing to commit → fine
+    .finally(() => { vaultSyncing = false; });
+}
 function refreshDashboard() {
-  return buildDashboard(ROOT);
+  const products = buildDashboard(ROOT);
+  syncVault();
+  return products;
 }
 
 const gitIn = (cwd, ...args) => execFileP('git', ['-C', cwd, ...args]);
