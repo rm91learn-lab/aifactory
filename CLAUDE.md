@@ -2,30 +2,29 @@
 
 This repository is an autonomous AI software factory: a curated, self-contained Claude Code toolkit that takes a product from idea to deployed software. Products are built in `products/<name>/` workspaces (scaffolded by `scripts/new-product.sh`), each carrying a copy of this kit.
 
-## Pipeline and stage ownership
+## Pipeline flow (the order the factory runs)
 
-Three imported systems plus custom DevOps skills, each owning a distinct stage. Do not mix planning systems.
+This is the canonical sequence every new product follows. Full detail in [docs/BUILD-PROCESS.md](docs/BUILD-PROCESS.md). Three stages stop for human approval (🚦); independent QA gates production (🔒); everything else is autonomous. **Do not mix planning systems** — GSD owns requirements/roadmap/execution; the pm-skills are analysis lenses, not competing planners.
 
-| Stage | Owner | Entry points |
-|---|---|---|
-| Product strategy | gstack | `office-hours` (YC-style product interrogation) |
-| Project setup & roadmap | GSD | `/gsd:new-project`, `/gsd:new-milestone` |
-| Phase planning | GSD | `/gsd:discuss-phase` → `/gsd:plan-phase` |
-| Plan review | gstack | `autoplan` (auto-runs CEO → design → eng → DX reviews), or individually `plan-ceo-review`, `plan-eng-review`, `plan-design-review`, `plan-devex-review` |
-| Design | gstack | `design-consultation` (design system), `design-html`, `design-review` (visual QA) |
-| Implementation | GSD orchestration + superpowers discipline | `/gsd:execute-phase` (or `/gsd:autonomous`) |
-| Verification | GSD + turbo QA + gstack | `/gsd:verify-work`, `audit`, `review-code`, `smoke-test`, `exploratory-test`, `cso` (security), `health` |
-| Ship | turbo | `finalize` → `ship` / `split-and-ship` → `review-pr` → `resolve-pr-comments` |
-| Docs | gstack | `document-generate`, `document-release` (post-ship) |
-| CI / deploy / release | custom skills | `fix-ci`, `deploy`, `release` |
-| Operate | custom + turbo | `post-deploy-monitor` (canary window) → daemon watchdog (continuous, via DEPLOY.json) → incident agent on failure; `investigate`, `self-improve` |
-| Handoff (after payment) | custom | `handoff-product` — secrets scan, strip kit, archive mirror, transfer repo to customer |
-| Re-engage (customer-owned repo) | custom | `scripts/adopt-product.sh <git-url>` → `/gsd:import` → deliver via PRs |
+| # | Stage | Owner | Runs | Stops for |
+|---|---|---|---|---|
+| 0 | Intake | daemon | Telegram or dashboard chat → confirm → scaffold repo + `IDEA.md` | tap ✅ |
+| 1 | **Strategy** | gstack `office-hours` | `last30days` industry-analyst research + pm-skills frameworks (value-proposition, business-model, swot, porters, market-sizing, competitor-analysis, ICP, pricing, north-star, opportunity-solution-tree) + `strategy-red-team` → `STRATEGY.md` (domain model) | **🚦 human** |
+| 2 | **PRD** | GSD `/gsd:new-project` | requirements + roadmap on the domain model + `prioritization-frameworks` + `pre-mortem` → `PRD.md` + `.planning/` | **🚦 human** |
+| 3 | **Design** | gstack `design-consultation` + `design-html` | experience UX loop (fewest clicks, no legacy) → `design/` wireframes, served at `/preview/<slug>/` | **🚦 human** (UI only; non-UI auto-skips) |
+| 4 | Build | GSD + superpowers | per phase: `/gsd:plan-phase` → `autoplan` (CEO/design/eng/DX) → `/gsd:execute-phase` → `/gsd:verify-work` + `review-code` + `cso` + `design-review`; **staging only** | auto |
+| 5 | Docs | gstack `document-release` | docs matching what shipped → `DOCS.txt` link | auto |
+| 6 | **Independent QA** | turbo/gstack QA agent | showroom · domain-coherence · customer-experience · `intended-vs-implemented` · code-hygiene · `cso` · accessibility → `QA-VERDICT.txt` | **🔒 PASS** |
+| 7 | Release | daemon (never an agent) | promote staged→prod → verify health → 10-min canary → rollback on failure | auto |
+| 8 | Operate | custom + turbo | `post-deploy-monitor` → watchdog → incident agent (stabilize/rollback only); `investigate`, `self-improve` | continuous |
+| 9 | Handoff / re-engage | custom | `handoff-product` (after payment); `scripts/adopt-product.sh` → `/gsd:import` → deliver via PRs | payment |
 
 - **GSD** (`/gsd:*` commands, `gsd-*` agents) owns macro-level orchestration: roadmap, phases, wave-based parallel execution, file-based state in `.planning/`. For full autonomy use `/gsd:autonomous`.
 - **Superpowers skills** (`test-driven-development`, `systematic-debugging`, `verification-before-completion`, `requesting-code-review`, `receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`, `dispatching-parallel-agents`, `writing-skills`) are engineering discipline. They apply during ALL implementation work, including inside GSD executors: no production code without a failing test first, no fixes without root cause, no completion claims without fresh verification evidence.
 - **Turbo skills** own the ship tail and QA. They write working files under `.turbo/` (gitignored).
 - **gstack skills** (13: plan reviews, design, security, docs, health, office-hours) add the product/design/review dimension. Their preambles call `~/.claude/skills/gstack/bin/*` helper scripts with `|| true` fallbacks — full features when a global gstack install exists, silent defaults otherwise. `design-review` uses the gstack browse daemon when available; falls back to static analysis.
+- **pm-skills (25)** are product-management *analysis lenses* — strategy frameworks (value-proposition, business-model, swot, porters, pestle, ansoff, market-sizing, competitor-analysis, ICP, pricing/monetization, north-star, opportunity-solution-tree, customer-journey-map, startup/lean-canvas), prioritization, `pre-mortem`, `strategy-red-team`, and `intended-vs-implemented`. Used in the Strategy/PRD/QA stages. They do NOT plan — GSD owns requirements/roadmap/execution.
+- **last30days** is the industry-analyst research engine (recency-weighted, engagement-ranked social/web signal) the Strategy gate runs to ground decisions in current reality. Keyless-capable; needs `python3.12`+`node` (present); sharper with X cookies + `yt-dlp` (installed).
 
 ## The human-approval gates (mandatory, before any code ships)
 
