@@ -483,7 +483,7 @@ function renderGrid(v){
 }
 function liveView(p){
   var w=el("div","live show");
-  w.appendChild(rail(p,true));
+  w.appendChild(el("div","ql","live activity — what the agent is doing right now"));
   if(p.building){
     var seen={},row=el("div");
     (p.activity&&p.activity.entries||[]).slice().reverse().forEach(function(e){var ag=(e.s.match(/^[^·:]*agent/i)||[""])[0]||"";if(ag&&!seen[ag]){seen[ag]=1;var c=el("span","agc");c.appendChild(el("span","d"));c.appendChild(el("b",null,ag.trim()));row.appendChild(c);}});
